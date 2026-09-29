@@ -175,3 +175,33 @@ def test_detect_model_family_lfm2():
 
 def test_detect_model_family_unknown():
     assert detect_model_family("some-other-model.gguf") == "qwen3"  # default
+
+
+def test_qwen35_native_function_call():
+    from aof.inference.parsing import parse_response
+
+    raw = (
+        "Checking.\n<tool_call>\n<function=web_search>\n<parameter=query>\nLuhmann index cards\n</parameter>\n"
+        "<parameter=max_results>\n5\n</parameter>\n</function>\n</tool_call>"
+    )
+    parsed = parse_response(raw)
+    assert [(c.name, c.arguments) for c in parsed.tool_calls] == [
+        ("web_search", {"query": "Luhmann index cards", "max_results": 5})
+    ]
+    assert parsed.text == "Checking."
+
+
+def test_lone_closing_think_tag_is_split_off():
+    from aof.inference.parsing import parse_response
+
+    parsed = parse_response("The user wants a definition.\nLet me recall...\n</think>\n\nA Zettelkasten is a note system.")
+    assert parsed.text == "A Zettelkasten is a note system."
+    assert "The user wants" in parsed.thinking
+
+
+def test_detect_qwen35_family():
+    from aof.inference.parsing import detect_model_family
+
+    assert detect_model_family("models/Qwythos-9B-Claude-Mythos-5-1M-Q4_K_M.gguf") == "qwen35"
+    assert detect_model_family("Qwen3.5-4B-Q4.gguf") == "qwen35"
+    assert detect_model_family("Qwen3-8B-Q4_K_M.gguf") == "qwen3"

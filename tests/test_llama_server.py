@@ -85,3 +85,62 @@ async def test_real_llama_server_answers_without_thinking():
     if sys.platform == "win32":
         out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True).stdout
         assert str(pid) not in out
+
+
+_REQUIRES_REAL = pytest.mark.skipif(
+    not (os.environ.get(ENV_BINARY) and LARGE_MODEL and os.path.exists(LARGE_MODEL)),
+    reason="set AOF_LLAMA_SERVER and AOF_TEST_LARGE_MODEL to run against a real llama-server",
+)
+_CARD_SAMPLING = dict(top_p=0.95, top_k=20, repeat_penalty=1.05, min_temperature=0.6)
+
+
+@_REQUIRES_REAL
+async def test_real_model_emits_parseable_tool_call_in_aof_prompt_format():
+    from aof.inference.parsing import detect_model_family, format_tools_for_prompt, parse_response
+
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for a query and return top results.",
+            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+        },
+    }]
+    family = detect_model_family(LARGE_MODEL)
+    system = "You verify claims for a knowledge vault. " + format_tools_for_prompt(tools, family)
+    backend = LlamaServerBackend(
+        LARGE_MODEL, LlamaServerConfig(enable_thinking=False, **_CARD_SAMPLING), n_ctx=4096, max_tokens=300
+    )
+    await backend.start()
+    try:
+        result = await backend.complete([
+            {"role": "system", "content": system},
+            {"role": "user", "content": "Claim: 'Luhmann kept about 90,000 index cards.' Look up the number of cards."},
+        ])
+    finally:
+        await backend.shutdown()
+    parsed = parse_response(result.text)
+    assert parsed.tool_calls, f"no tool call parsed from: {result.text!r}"
+    assert parsed.tool_calls[0].name == "web_search"
+    assert isinstance(parsed.tool_calls[0].arguments.get("query"), str)
+
+
+@_REQUIRES_REAL
+async def test_real_model_thinking_is_separated_from_answer():
+    from aof.inference.parsing import parse_response
+
+    backend = LlamaServerBackend(
+        LARGE_MODEL, LlamaServerConfig(enable_thinking=True, **_CARD_SAMPLING), n_ctx=4096, max_tokens=3000
+    )
+    await backend.start()
+    try:
+        result = await backend.complete(
+            [{"role": "user", "content": "In one sentence, what is a Zettelkasten?"}], temperature=0.1
+        )
+    finally:
+        await backend.shutdown()
+    parsed = parse_response(result.text)
+    assert result.raw["choices"][0]["finish_reason"] == "stop", "thinking exhausted the token budget"
+    assert "zettelkasten" in parsed.text.lower()
+    assert "</think>" not in parsed.text
+    assert len(parsed.text) < 600

@@ -111,6 +111,12 @@ class LocalServerConfig:
     timeout: int = 300  # seconds per request
     # None = leave the model's default; False/True sends chat_template_kwargs.enable_thinking
     enable_thinking: bool | None = None
+    # Sampling overrides (None = server default). min_temperature floors any requested temperature:
+    # some reasoning models loop at T <= 0.3 (see docs/llama-cpp.md).
+    top_p: float | None = None
+    top_k: int | None = None
+    repeat_penalty: float | None = None
+    min_temperature: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -127,6 +133,12 @@ class LlamaServerConfig:
     startup_timeout: int = 300
     extra_args: tuple[str, ...] = ()
     enable_thinking: bool = False  # most agent steps want the answer, not untagged chain-of-thought
+    # Sampling overrides (None = server default). min_temperature floors any requested temperature:
+    # some reasoning models loop at T <= 0.3 (see docs/llama-cpp.md).
+    top_p: float | None = None
+    top_k: int | None = None
+    repeat_penalty: float | None = None
+    min_temperature: float = 0.0
     roles: tuple[str, ...] = ()  # roles served through llama-server instead of llama-cpp-python
 
 

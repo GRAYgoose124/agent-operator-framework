@@ -88,12 +88,34 @@ Rules of thumb:
 - **Scale out, not up.** Many parallel small workers beat one large model for extraction/dedupe/verification.
 - **Track it.** Per-tier calls, tokens and escalation rate are vault metrics; the target is to keep tier 4 a small fraction.
 
+## Grounding and light research during refinement
+
+Refinement is not closed-book. Every tier can look things up, in proportion to its role:
+
+- **Small models (tiers 1-3): light sanity research.** While merging or checking a note they may run a *budgeted*
+  lookup (default 1-2 calls: `search_memory` first, then `web_search`/`web_scrape`) to compare a claim against
+  another source. Results are attached as provenance, never silently folded in.
+- **Final pass (tier 4, the 9B):** a whole-note/hub-level audit with a larger research budget to ground claims,
+  fill gaps, and tie the note into related vault notes and external sources.
+
+Finding (Qwythos-9B, llama-server, native tools): with a soft prompt ("use tools if needed") the model judged a
+claim "unsupported by the excerpt" but **did not call the search tool**; with a direct instruction ("look up
+the number") it called `web_search` correctly in both auto and forced (`tool_choice=required`) modes. So research
+must be **scaffolded by the framework, not left to model initiative**:
+
+1. The verifier returns a structured verdict: `supported | contradicted | unsupported | needs_lookup` (+ a proposed query).
+2. On `unsupported`/`needs_lookup` the framework runs the lookup itself (within the tier's budget), then re-judges
+   with the evidence in context. This works identically for a 0.6B model and the 9B.
+3. New evidence becomes a cited source on the note (`add_citation` must therefore work in refine context, not
+   only during `research run`).
+
 ## Phases
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Repo prepared for release (single init commit on `github-release`) | done |
 | 1 | `llama_server` backend + thinking control + docs (`docs/llama-cpp.md`) | done (verified with a real 9B) |
+| 1b | Qwen3.5-family support: `<function=...>` tool-call parsing, lone `</think>` split, sampling floor/overrides | done |
 | 2 | Specialist registry (capability → provider chain), Needle 3/2 adapter, LFM2 Nano roles wired in | planned |
 | 3 | Atomic notes + provenance schema; refine passes (extract, dedupe, merge/split, verify) | planned |
 | 4 | Link proposals + hub/structure notes | planned |

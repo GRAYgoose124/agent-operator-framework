@@ -116,6 +116,10 @@ class LlamaServerBackend:
             api_key="none",
             model=Path(self._model_path).name,
             enable_thinking=self._server.enable_thinking,
+            top_p=self._server.top_p,
+            top_k=self._server.top_k,
+            repeat_penalty=self._server.repeat_penalty,
+            min_temperature=self._server.min_temperature,
         )
         self._client = LocalServerBackend(cfg, n_ctx=self._n_ctx, max_tokens=self._max_tokens)
         await self._client.start()

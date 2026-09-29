@@ -65,11 +65,15 @@ class LocalServerBackend:
         payload: dict[str, Any] = {
             "model": self._config.model,
             "messages": messages,
-            "temperature": temperature if temperature is not None else 0.7,
+            "temperature": max(temperature if temperature is not None else 0.7, self._config.min_temperature),
             "max_tokens": max_tokens or self._max_tokens,
         }
         if stop:
             payload["stop"] = stop
+        for key in ("top_p", "top_k", "repeat_penalty"):
+            value = getattr(self._config, key)
+            if value is not None:
+                payload[key] = value
         if self._config.enable_thinking is not None:
             payload["chat_template_kwargs"] = {"enable_thinking": self._config.enable_thinking}
 

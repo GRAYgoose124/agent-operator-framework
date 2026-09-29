@@ -7,8 +7,8 @@ its OpenAI-compatible API.
 
 ## Which llama.cpp to install
 
-- **Known-good build:** `b8416` (commit `6729d4920`), CUDA, Windows/MSVC. Newer builds should work; older
-  builds may not recognise recent architectures.
+- **Known-good builds (CUDA, Windows):** `b8416` and `b9803` (the latter ~15% faster on a 9B `qwen35` model:
+  56 vs 49 tok/s on a 12 GB RTX 4080 laptop GPU). Older builds may not recognise recent architectures.
 - **Get it** from the [llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases) (pick the CUDA build
   for your OS), or build it yourself:
 
@@ -47,10 +47,35 @@ for judgement-heavy steps (verify, reconcile, structure); prefer small models el
 | `n_gpu_layers` | 99 | Layers offloaded to GPU |
 | `n_parallel` | 1 | Concurrent slots; context is `role n_ctx × n_parallel` |
 | `enable_thinking` | false | Sends `chat_template_kwargs.enable_thinking`. Some models (Qwen3.5-family) emit untagged chain-of-thought otherwise and can exhaust `max_tokens` before answering |
+| `top_p`, `top_k`, `repeat_penalty` | unset | Sampling overrides sent with every request |
+| `min_temperature` | 0.0 | Floor applied to any requested temperature (callers such as `complete_json` ask for 0.1) |
 | `startup_timeout` | 300 | Seconds to wait for `/health` |
 | `extra_args` | `[]` | Extra `llama-server` flags |
 
 Per-role context comes from `[role_context]` (e.g. `large = 8192`).
+
+## Recommended settings for reasoning models (e.g. Qwythos-9B / Qwen3.5-family)
+
+The model card recommends `temperature 0.6, top_p 0.95, top_k 20, repeat_penalty 1.05` and warns that greedy
+or `T <= 0.3` can cause repetition loops. Set them on the server role so callers cannot undercut them:
+
+```toml
+[llama_server]
+enable_thinking = false      # cheap steps; use thinking for the final judgement pass
+top_p = 0.95
+top_k = 20
+repeat_penalty = 1.05
+min_temperature = 0.6
+```
+
+- **Tool calls:** Qwen3.5-family models emit `<tool_call><function=NAME><parameter=ARG>VALUE</parameter>...`.
+  AOF detects this family (`qwen3.5`, `qwen35`, `qwythos` in the model path), prompts in that format and parses it.
+- **Thinking:** with thinking on, the template pre-opens `<think>`, so output has only a closing `</think>`;
+  AOF splits the reasoning from the answer. Allow a generous `max_tokens` (the card suggests 16384).
+- **MTP variants** (`*-MTP-*.gguf`) need `--spec-type draft-mtp --spec-draft-n-max N` (pass via `extra_args`) and a
+  build that has it (`b9803` does; `b8416` only offers `ngram-*` modes). Measured on a 12 GB laptop GPU with the
+  card's sampling (T=0.6): plain 56 tok/s vs MTP 53 / 45 / 33 tok/s at `n-max` 2 / 3 / 6 (drafts mostly rejected),
+  so MTP did not help there. Prefer the plain quant and re-measure on your own hardware.
 
 ## Tests
 

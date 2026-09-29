@@ -99,7 +99,7 @@ def format_tools_for_prompt(tools: list[dict], model_family: str = "qwen3") -> s
     Args:
         tools: List of tool definitions, each with keys:
                type, function.name, function.description, function.parameters
-        model_family: "qwen3" for XML format, "lfm2" for LFM2.5 JSON format
+        model_family: "qwen3" for JSON-in-XML, "qwen35" for <function=...> XML, "lfm2" for LFM2.5 JSON format
 
     Qwen3 uses: <tools>[...]</tools> + <tool_call>{...}</tool_call>
     LFM2.5 uses: JSON tool defs + <|tool_call_start|>...<|tool_call_end|>
@@ -111,6 +111,12 @@ def format_tools_for_prompt(tools: list[dict], model_family: str = "qwen3") -> s
             f"You have access to the following tools:\n{tools_json}\n\n"
             "To call a tool, respond with a JSON object inside tool call tags:\n"
             '<|tool_call_start|>{"name": "tool_name", "arguments": {"key": "value"}}<|tool_call_end|>'
+        )
+    if model_family == "qwen35":
+        return (
+            f"<tools>\n{tools_json}\n</tools>\n\n"
+            "To call a tool, respond with:\n"
+            "<tool_call>\n<function=tool_name>\n<parameter=arg_name>\nvalue\n</parameter>\n</function>\n</tool_call>"
         )
     # Qwen3: include tool list and explicit response format so the model emits tool calls
     return (
@@ -124,11 +130,14 @@ def detect_model_family(model_path: str) -> str:
 
     Returns:
         "lfm2" for LiquidAI LFM2.5 models
+        "qwen35" for Qwen3.5-architecture models (native <function=...> tool calls), incl. Qwythos
         "qwen3" for Qwen3 models (default)
     """
     path_lower = model_path.lower()
     if "lfm2" in path_lower or "lfm-2" in path_lower or "liquid" in path_lower:
         return "lfm2"
+    if any(tag in path_lower for tag in ("qwen3.5", "qwen35", "qwythos")):
+        return "qwen35"
     return "qwen3"
 
 
@@ -136,6 +145,9 @@ def detect_model_family(model_path: str) -> str:
 
 _THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 _TOOL_CALL_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
+# Qwen3.5 native format: <tool_call><function=NAME><parameter=ARG>VALUE</parameter></function></tool_call>
+_FUNC_CALL_RE = re.compile(r"<tool_call>\s*<function=([^>\s]+)>(.*?)</function>\s*</tool_call>", re.DOTALL)
+_FUNC_PARAM_RE = re.compile(r"<parameter=([^>\s]+)>\s*(.*?)\s*</parameter>", re.DOTALL)
 # LFM2.5 tool call format: <|tool_call_start|>...<|tool_call_end|>
 _LFM_TOOL_CALL_RE = re.compile(
     r"<\|tool_call_start\|>(.*?)<\|tool_call_end\|>", re.DOTALL
@@ -150,7 +162,11 @@ _TAG_RE = re.compile(
 
 def _extract_thinking(text: str) -> str | None:
     match = _THINK_RE.search(text)
-    return match.group(1).strip() if match else None
+    if match:
+        return match.group(1).strip()
+    # Chat templates that pre-open <think> yield output with only the closing tag.
+    head, sep, _ = text.partition("</think>")
+    return head.strip() if sep else None
 
 
 def _extract_tool_calls(text: str) -> list[ToolCall]:
@@ -178,6 +194,13 @@ def _extract_tool_calls(text: str) -> list[ToolCall]:
             if fuzzy:
                 calls.append(fuzzy)
 
+    # 1b. Qwen3.5 native format: <tool_call><function=NAME><parameter=ARG>VALUE</parameter>...
+    for match in _FUNC_CALL_RE.finditer(text):
+        arguments = {
+            key: _coerce_param(value) for key, value in _FUNC_PARAM_RE.findall(match.group(2))
+        }
+        calls.append(ToolCall(name=match.group(1), arguments=arguments))
+
     # 2. LFM2.5 format: <|tool_call_start|>...<|tool_call_end|>
     for match in _LFM_TOOL_CALL_RE.finditer(text):
         raw = match.group(1).strip()
@@ -189,6 +212,14 @@ def _extract_tool_calls(text: str) -> list[ToolCall]:
     if not calls:
         calls.extend(_extract_bare_tool_calls(text))
     return calls
+
+
+def _coerce_param(value: str):
+    """Parameter values arrive as text; decode JSON scalars/containers, keep everything else as str."""
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        return value
 
 
 def _fuzzy_parse_tool_call(text: str) -> ToolCall | None:
@@ -286,9 +317,12 @@ def _parse_pythonic_args(args_str: str) -> dict:
 
 def _strip_tags(text: str) -> str:
     """Remove XML-style tags and tool call blocks from display text."""
-    # Remove think blocks entirely
+    # Remove think blocks entirely (including a lone closing tag from templates that pre-open <think>)
     result = _THINK_RE.sub("", text)
-    # Remove Qwen3 tool call blocks
+    if "</think>" in result:
+        result = result.partition("</think>")[2]
+    # Remove Qwen3 / Qwen3.5 tool call blocks
+    result = _FUNC_CALL_RE.sub("", result)
     result = _TOOL_CALL_RE.sub("", result)
     # Remove LFM2.5 tool call blocks
     result = _LFM_TOOL_CALL_RE.sub("", result)
