@@ -119,6 +119,12 @@ class MemoryStore:
         source: str = "",
         agent_id: str = "",
         note_id: str | None = None,
+        *,
+        kind: str = "note",
+        status: str = "raw",
+        sources: list[str] | None = None,
+        supersedes: list[str] | None = None,
+        confidence: float | None = None,
     ) -> ZettelNote:
         """Create a new note, persist to markdown + index in SQLite."""
         note = ZettelNote(
@@ -129,6 +135,11 @@ class MemoryStore:
             links=links or [],
             source=source,
             agent_id=agent_id,
+            kind=kind,
+            status=status,
+            sources=sources or [],
+            supersedes=supersedes or [],
+            confidence=confidence,
         )
 
         # Write markdown file
