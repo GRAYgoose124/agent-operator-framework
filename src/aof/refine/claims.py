@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Sequence
+from typing import Awaitable, Callable
 
 from aof.refine.sources import SourceDoc
 from aof.refine.text import extract_entities, is_paper_meta, lexical_overlap, split_sentences

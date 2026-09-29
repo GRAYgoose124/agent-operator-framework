@@ -14,10 +14,11 @@ from typing import Sequence
 from aof.memory.store import MemoryStore
 from aof.memory.zettel import ZettelNote
 from aof.refine.claims import Claim, Embedder, claim_quota, extract_claims
-from aof.refine.decontext import decontextualize
+from aof.refine.decontext import decontextualize, rewrite_verified
 from aof.refine.dedupe import cluster_claims, pick_canonical
 from aof.refine.sources import Source, SourceDoc, gather_documents
-from aof.refine.text import keyword_query
+from aof.refine.standalone import is_standalone
+from aof.refine.text import keyword_query, needs_context
 from aof.refine.vault import store_clusters
 from aof.refine.verify import apply_verification, curate, verify_note
 from aof.specialists import CLASSIFY, EMBED, GENERATE, SpecialistExhausted, SpecialistRegistry
@@ -128,6 +129,8 @@ async def refine_question(
     curate_confirm: str | None = None,
     do_curate: bool = False,
     verify_top: int = 0,
+    standalone_check: bool = False,
+    extra_tags: Sequence[str] = (),
 ) -> RefineReport:
     """Gather evidence for `question`, extract grounded claims, merge duplicates losslessly, store as notes."""
     report = RefineReport(question=question)
@@ -156,12 +159,21 @@ async def refine_question(
 
     async def standalone(i: int) -> tuple[int, Claim]:
         async with gate:
-            return i, await decontextualize(report.claims[i], registry)
+            claim = await decontextualize(report.claims[i], registry)
+            # Openers are caught by heuristic; a classifier catches the rest (e.g. subjectless statements).
+            if standalone_check and not claim.statement and not needs_context(claim.text):
+                if await is_standalone(claim.text, registry, only=curate_only) is False:
+                    rewritten = await rewrite_verified(claim, registry)
+                    if rewritten:
+                        claim = replace(claim, statement=rewritten)
+            return i, claim
 
     for i, claim in await asyncio.gather(*(standalone(i) for i in reps)):
         report.claims[i] = claim
 
-    report.canonical, report.archived = await store_clusters(store, question, report.claims, report.clusters)
+    report.canonical, report.archived = await store_clusters(
+        store, question, report.claims, report.clusters, extra_tags=extra_tags,
+    )
 
     if do_curate:  # archive claims that do not help answer the question (kept, tagged off-topic)
         graded = await curate(

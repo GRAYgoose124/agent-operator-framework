@@ -7,7 +7,7 @@ import re
 from aof.memory.store import MemoryStore
 from aof.memory.zettel import ZettelNote
 from aof.refine.assess import live_claims
-from aof.refine.verify import claim_text, own_quotes, same_statement
+from aof.refine.verify import own_quotes, same_statement
 
 _LINE = re.compile(r'^- "(.*)" — (.*), (\S+)$')
 

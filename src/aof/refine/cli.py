@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def add_refine_parser(subparsers, common: argparse.ArgumentParser) -> None:
     refine_p = subparsers.add_parser(
-        "refine", help="Evidence-first vault refinement (see docs/VAULT_OVERHAUL.md)", parents=[common]
+        "refine", help="Evidence-first vault refinement", parents=[common]
     )
     sub = refine_p.add_subparsers(dest="refine_command")
 
@@ -36,6 +36,8 @@ def add_refine_parser(subparsers, common: argparse.ArgumentParser) -> None:
     run_p.add_argument("--confirm-with", default="role:large",
                        help="Provider that confirms every 'irrelevant' before archiving ('' to disable)")
     run_p.add_argument("--verify-top", type=int, default=0, help="Verify the N most relevant claims per question")
+    run_p.add_argument("--no-standalone", action="store_true",
+                       help="Skip the classifier that finds claims which need a standalone rewrite")
     run_p.add_argument("--concurrency", type=int, default=1,
                        help="Concurrent model calls for curation/classification (match [llama_server] n_parallel)")
     run_p.add_argument("--force", action="store_true", help="Re-run questions that already have notes")
@@ -48,6 +50,27 @@ def add_refine_parser(subparsers, common: argparse.ArgumentParser) -> None:
     structure_p.add_argument("--link-min-sim", type=float, default=0.55)
     structure_p.add_argument("--hub-threshold", type=float, default=0.5)
     structure_p.add_argument("--max-hub-size", type=int, default=60, help="Split hubs larger than this into subtopics")
+
+    gaps_p = sub.add_parser("gaps", help="Find what the vault does not yet answer for each question and research it")
+    shared(gaps_p)
+    gaps_p.add_argument("--sources", default="pubmed,openalex,wikipedia")
+    gaps_p.add_argument("--per-source", type=int, default=5)
+    gaps_p.add_argument("--claims-per-doc", type=int, default=6)
+    gaps_p.add_argument("--rounds", type=int, default=2, help="Research/re-grade rounds per question")
+    gaps_p.add_argument("--max-parts", type=int, default=6, help="Sub-questions a question is decomposed into")
+    gaps_p.add_argument("--max-gaps", type=int, default=4, help="Uncovered parts researched per round")
+    gaps_p.add_argument("--judge-with", default="role:large", help="Provider that grades coverage ('' = chain)")
+    gaps_p.add_argument("--curate-with", default="role:small")
+    gaps_p.add_argument("--confirm-with", default="role:large")
+    gaps_p.add_argument("--concurrency", type=int, default=4)
+    gaps_p.add_argument("--dry-run", action="store_true", help="Only report the gaps; do no research")
+    gaps_p.add_argument("--force", action="store_true", help="Redo questions already completed by a previous gaps run")
+
+    standalone_p = sub.add_parser("standalone", help="Rewrite context-dependent claims so they stand alone (verified)")
+    workspace_only(standalone_p)
+    standalone_p.add_argument("--with", dest="with_", default="role:small", help="Provider that grades standalone-ness")
+    standalone_p.add_argument("--limit", type=int, default=0, help="Check at most N claims (0 = all)")
+    standalone_p.add_argument("--concurrency", type=int, default=4)
 
     repair_p = sub.add_parser("repair", help="Fix known defects in vaults written by earlier versions")
     workspace_only(repair_p)
@@ -93,8 +116,8 @@ async def run_refine_command(args: argparse.Namespace, config: AppConfig) -> Non
     from aof.specialists import build_registry
     from aof.specialists.backends import RoleBackends
 
-    if args.refine_command not in ("run", "assess", "structure", "metrics", "export", "repair", "verify"):
-        print("Use: aof refine run|assess|structure|metrics|export|repair|verify --workspace NAME [--queue-file PATH]")
+    if args.refine_command not in ("run", "assess", "structure", "metrics", "export", "repair", "verify", "standalone", "gaps"):
+        print("Use: aof refine run|assess|structure|metrics|export|repair|verify|standalone|gaps --workspace NAME [--queue-file PATH]")
         return
     workspace = ensure_workspace(args.workspace)
     config = config_with_workspace(config, workspace.root)
@@ -108,6 +131,14 @@ async def run_refine_command(args: argparse.Namespace, config: AppConfig) -> Non
     backends = RoleBackends(config)
     registry = build_registry(config, backends.get)
     try:
+        # Stage hint: roles this command uses explicitly are loaded up front, and other swap roles are parked.
+        staged = {
+            spec.split(":", 1)[1]
+            for attr in ("judge_with", "curate_with", "confirm_with", "with_")
+            if (spec := getattr(args, attr, "") or "").startswith("role:")
+        }
+        if staged:
+            await backends.stage(staged)
         if args.refine_command == "run":
             sources = build_sources([s.strip() for s in args.sources.split(",") if s.strip()])
             topics = [t.strip() for t in args.topics.split(",") if t.strip()]
@@ -123,7 +154,7 @@ async def run_refine_command(args: argparse.Namespace, config: AppConfig) -> Non
                     per_source=args.per_source, claims_per_doc=args.claims_per_doc,
                     do_curate=args.curate, curate_only=args.curate_with or None,
                     curate_confirm=args.confirm_with or None, verify_top=args.verify_top,
-                    concurrency=args.concurrency,
+                    concurrency=args.concurrency, standalone_check=not args.no_standalone,
                 )
                 done[slug] = report.summary()
                 done_path.write_text(json.dumps(done, indent=1), encoding="utf-8")
@@ -136,6 +167,60 @@ async def run_refine_command(args: argparse.Namespace, config: AppConfig) -> Non
                 store, registry, link_min_sim=args.link_min_sim, hub_threshold=args.hub_threshold,
                 max_hub_size=args.max_hub_size,
             ))
+        elif args.refine_command == "gaps":
+            from aof.refine import gaps as gap_research
+            from aof.refine.pipeline import registry_embedder
+
+            embed = registry_embedder(registry)
+            if embed is None:
+                raise SystemExit("gap research needs an embedding provider (sentence-transformers)")
+            index = gap_research.VaultIndex(store, embed)
+            await index.refresh()
+            sources = build_sources([s.strip() for s in args.sources.split(",") if s.strip()])
+
+            async def research(sub_question: str, parent: str) -> None:
+                await refine_question(
+                    sub_question, store=store, registry=registry, sources=sources, per_source=args.per_source,
+                    claims_per_doc=args.claims_per_doc, do_curate=True, curate_only=args.curate_with or None,
+                    curate_confirm=args.confirm_with or None, concurrency=args.concurrency, standalone_check=True,
+                    extra_tags=[f"gap-of:{question_slug(parent)}"],
+                )
+
+            reports = []
+            done_path = workspace.root / "gaps_done.json"  # completion marker per question (resumable runs)
+            done = json.loads(done_path.read_text(encoding="utf-8")) if done_path.exists() else {}
+            for i, spec in enumerate(specs, 1):
+                slug = question_slug(spec.question)
+                if not args.dry_run and not args.force and slug in done:
+                    print(f"[{i}/{len(specs)}] {spec.id}: gaps already researched (use --force to redo)")
+                    continue
+                report = await gap_research.find_gaps(
+                    spec.question, index, registry, max_parts=args.max_parts, judge_only=args.judge_with or None,
+                )
+                if not args.dry_run:
+                    await gap_research.fill_gaps(
+                        report, index, registry, research, rounds=args.rounds, max_gaps=args.max_gaps,
+                        judge_only=args.judge_with or None,
+                    )
+                reports.append(report)
+                if not args.dry_run:
+                    done[slug] = report.counts()
+                    done_path.write_text(json.dumps(done, indent=1), encoding="utf-8")
+                print(f"[{i}/{len(specs)}] {spec.id}: {report.counts()}", flush=True)
+            out = workspace.root / ("gaps_dry_run.md" if args.dry_run else "gaps.md")
+            out.write_text(gap_research.render_markdown(reports), encoding="utf-8")
+            print(f"Report: {out}")
+        elif args.refine_command == "standalone":
+            from aof.refine.assess import live_claims
+            from aof.refine.standalone import make_standalone
+
+            todo = [n for n in await live_claims(store) if n.kind == "claim"]
+            if args.limit:
+                todo = todo[: args.limit]
+            report = await make_standalone(
+                todo, store=store, registry=registry, only=args.with_ or None, concurrency=args.concurrency,
+            )
+            print("Standalone check:", report.summary())
         elif args.refine_command == "repair":
             from aof.refine.pipeline import registry_embedder
             from aof.refine.repair import repair_false_corroboration
@@ -144,7 +229,6 @@ async def run_refine_command(args: argparse.Namespace, config: AppConfig) -> Non
             print(f"Repair: {repaired} of {examined} corroborated claims had self-corroboration removed.")
             embed = registry_embedder(registry)
             if embed is not None:
-                import numpy as np
 
                 from aof.refine.repair import repair_weak_conflicts
                 from aof.refine.vectors import cosine
