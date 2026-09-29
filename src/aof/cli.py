@@ -257,6 +257,13 @@ def main() -> None:
         metavar="TEXT",
         help="Seed question: add to queue and run expansion (thinking model) to spawn many follow-up questions before research loop",
     )
+    researcher_run_p.add_argument(
+        "--queue-file",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="TOML question set (see examples/queues/) to add to the workspace queue; already-queued questions are skipped",
+    )
 
     args = parser.parse_args()
 
@@ -1026,6 +1033,15 @@ async def _run_researcher(args: argparse.Namespace, config: AppConfig) -> None:
         config = _replace(config, research=_replace(config.research, parallel_items=parallel_override))
     config = config_with_workspace(config, workspace.root)
     control: dict = {"quit": False, "paused": False}
+
+    queue_file = getattr(args, "queue_file", None)
+    if queue_file:
+        from aof.research import ResearchQueue
+        from aof.research.queue_file import enqueue_question_set, load_question_set
+
+        qset = load_question_set(queue_file)
+        n_queued = enqueue_question_set(ResearchQueue(str(config.research.queue_path)), qset)
+        print(f"Queue file '{qset.name}': added {n_queued} of {len(qset.questions)} questions.")
 
     seed_question = getattr(args, "seed_question", None)
     if seed_question:

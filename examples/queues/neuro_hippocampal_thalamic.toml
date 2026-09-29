@@ -1,0 +1,317 @@
+# Demo/benchmark queue: hippocampal formation, thalamus, thalamic reticular nucleus (TRN).
+#
+# Only `question` drives research. `key_facts`, `pitfalls` and `refs` are an *assessment rubric* for
+# whoever grades the resulting vault -- they are never shown to agents. The rubric is a guide, not ground
+# truth: check specifics against the literature. Results of running this queue are not committed.
+#
+#   uv run aof researcher run --workspace neuro --queue-file examples/queues/neuro_hippocampal_thalamic.toml
+
+[meta]
+name = "neuro-hippocampal-thalamic"
+description = "Hippocampal formation, thalamus and TRN: circuits, oscillations, memory consolidation, disease, models."
+
+# ---------------------------------------------------------------- hippocampal formation
+
+[[questions]]
+id = "hpc-circuit"
+question = "What is the intrinsic circuitry of the hippocampal formation (entorhinal cortex, dentate gyrus, CA3, CA1, subiculum), and what does each stage contribute to memory?"
+key_facts = [
+  "EC layer II projects via the perforant path to dentate gyrus and CA3; EC layer III projects to CA1 (temporoammonic path)",
+  "DG granule cells project via mossy fibers to CA3; CA3 projects to CA1 via Schaffer collaterals; CA1 projects to subiculum and EC deep layers",
+  "CA3 has extensive recurrent collaterals",
+]
+pitfalls = [
+  "Presenting the trisynaptic loop as the only or strictly serial route (the direct EC-to-CA1 path and CA2 are omitted)",
+]
+refs = ["Amaral & Witter 1989", "Witter et al. 2000"]
+
+[[questions]]
+id = "dg-ca3-separation-completion"
+question = "How do the dentate gyrus and CA3 support pattern separation and pattern completion, and what is the experimental evidence?"
+key_facts = [
+  "DG: very sparse activity, large numbers of granule cells relative to EC input; proposed to orthogonalize similar inputs",
+  "CA3 recurrent network proposed as an autoassociative memory supporting completion from partial cues (Marr; McNaughton & Morris; Treves & Rolls)",
+  "Evidence includes place-cell remapping/rate-remapping studies and DG/CA3 manipulations, plus human high-resolution fMRI mnemonic-similarity tasks",
+]
+pitfalls = ["Claiming DG neurons fire densely", "Treating separation/completion as directly observed rather than inferred"]
+refs = ["Marr 1971", "Leutgeb et al. 2007", "Yassa & Stark 2011"]
+
+[[questions]]
+id = "place-grid-hd"
+question = "How do place cells, grid cells, head-direction cells and border cells relate to each other, and what is the evidence that they form a spatial navigation system?"
+key_facts = [
+  "Place cells in hippocampus (O'Keefe & Dostrovsky 1971); grid cells in medial entorhinal cortex (Hafting et al. 2005); head-direction cells (Taube et al. 1990)",
+  "Grid cells are organised in modules with discrete spacing scales",
+  "2014 Nobel Prize to O'Keefe, May-Britt Moser and Edvard Moser",
+]
+pitfalls = ["Confusing lateral and medial entorhinal cortex roles", "Claiming grid cells are only spatial"]
+refs = ["Hafting et al. 2005", "Moser et al. 2008"]
+
+[[questions]]
+id = "swr-replay"
+question = "What are hippocampal sharp-wave ripples and replay, and what is the causal evidence that they support memory consolidation and planning?"
+key_facts = [
+  "Sharp-wave ripples: CA3-driven sharp wave with ~150-250 Hz ripple in CA1 during NREM sleep and quiet wakefulness",
+  "Replay of place-cell sequences (Wilson & McNaughton 1994), including reverse replay in waking (Foster & Wilson 2006)",
+  "Closed-loop ripple disruption impairs spatial learning (Girardeau et al. 2009; Ego-Stengel & Wilson 2010)",
+]
+pitfalls = ["Presenting replay as proven to be the mechanism of all consolidation"]
+refs = ["Buzsaki 2015", "Girardeau et al. 2009"]
+
+[[questions]]
+id = "theta-gamma"
+question = "What generates hippocampal theta and gamma oscillations, and what is known about theta phase precession and theta-gamma coupling in memory?"
+key_facts = [
+  "Rodent theta ~6-10 Hz during locomotion and REM; medial septum is a key pacemaker/driver",
+  "Phase precession of place cells (O'Keefe & Recce 1993)",
+  "Theta-gamma coupling proposals (Lisman & Jensen) for sequence/working memory",
+]
+pitfalls = ["Assuming human hippocampal theta matches rodent frequency and continuity"]
+refs = ["Buzsaki 2002", "Lisman & Jensen 2013"]
+
+[[questions]]
+id = "indexing-cls"
+question = "Compare hippocampal memory indexing theory with complementary learning systems theory: what does each claim about the hippocampus and neocortex, and how have they been updated?"
+key_facts = [
+  "Indexing theory (Teyler & DiScenna 1986): hippocampus stores an index to distributed neocortical patterns",
+  "CLS (McClelland, McNaughton & O'Reilly 1995): fast hippocampal learning vs slow interleaved neocortical learning to avoid catastrophic interference",
+  "CLS updates (Kumaran, Hassabis & McClelland 2016)",
+]
+pitfalls = ["Conflating the two theories"]
+refs = ["Teyler & Rudy 2007", "McClelland et al. 1995"]
+
+[[questions]]
+id = "consolidation-models"
+question = "What are the standard model of systems consolidation and the multiple trace / trace transformation alternatives, and what do patient and animal data say?"
+key_facts = [
+  "Standard model: hippocampus-dependent then gradually hippocampus-independent, giving temporally graded retrograde amnesia",
+  "Multiple trace theory / transformation: episodic detail remains hippocampus-dependent (Nadel & Moscovitch 1997; Winocur & Moscovitch)",
+  "Patient H.M. (Scoville & Milner 1957) as a founding case",
+]
+pitfalls = ["Reporting the standard model as settled; the debate is unresolved"]
+refs = ["Squire & Alvarez 1995", "Nadel & Moscovitch 1997"]
+
+[[questions]]
+id = "engrams"
+question = "What is the evidence for memory engram cells in the hippocampus and beyond, including optogenetic reactivation and silent engrams?"
+key_facts = [
+  "Tagging and reactivating DG cells active during fear conditioning can elicit freezing (Liu et al. 2012)",
+  "Concept of engram cells and their properties (Josselyn & Tonegawa 2020)",
+  "Silent engrams / retrieval failure vs storage failure (Ryan et al. 2015)",
+]
+pitfalls = ["Overstating reactivation results as proof that the engram is the whole memory"]
+refs = ["Liu et al. 2012", "Josselyn & Tonegawa 2020", "Ryan et al. 2015"]
+
+[[questions]]
+id = "ltp-tagging"
+question = "How do NMDA-receptor-dependent LTP, spike-timing-dependent plasticity and synaptic tagging and capture relate to hippocampal memory, and how strong is the causal link?"
+key_facts = [
+  "LTP discovered in perforant path-dentate synapses (Bliss & Lomo 1973)",
+  "NMDA receptor coincidence detection; CA1 LTP; STDP",
+  "Synaptic tagging and capture (Frey & Morris 1997)",
+]
+pitfalls = ["Equating LTP with memory without noting the correlational/necessity-sufficiency caveats"]
+refs = ["Bliss & Lomo 1973", "Frey & Morris 1997", "Nabavi et al. 2014"]
+
+[[questions]]
+id = "dorsal-ventral"
+question = "How do dorsal and ventral hippocampus differ in connectivity, place-field scale and function (cognition vs emotion), and what is the long-axis gradient view?"
+key_facts = [
+  "Dorsal (septal) hippocampus: spatial/cognitive; ventral (temporal): anxiety/emotion, connections with amygdala, hypothalamus, mPFC",
+  "Place-field size increases along the dorsoventral axis",
+  "Dorsal in rodents corresponds to posterior and ventral to anterior hippocampus in humans",
+]
+pitfalls = ["Presenting the dichotomy as absolute rather than a gradient"]
+refs = ["Fanselow & Dong 2010", "Strange et al. 2014"]
+
+[[questions]]
+id = "hpc-pfc-reuniens"
+question = "How do the hippocampus and prefrontal cortex communicate, and what is the role of the nucleus reuniens?"
+key_facts = [
+  "Ventral hippocampus and subiculum project directly to mPFC; there is no comparable direct mPFC-to-hippocampus projection",
+  "Nucleus reuniens (midline thalamus) links mPFC and hippocampus bidirectionally",
+  "Reuniens implicated in spatial working memory and memory-guided behaviour",
+]
+pitfalls = ["Claiming a direct mPFC-to-CA1 pathway as the main route"]
+refs = ["Vertes et al. 2007", "Dolleman-van der Weel et al. 2019"]
+
+[[questions]]
+id = "adult-neurogenesis"
+question = "What is the state of the evidence on adult hippocampal neurogenesis in humans, and what does it mean for pattern separation theories?"
+key_facts = [
+  "Conflicting reports: Sorrells et al. 2018 (drops to undetectable in adults) vs Boldrini et al. 2018 and Moreno-Jimenez et al. 2019 (persists)",
+  "Robust in rodents; functional role often linked to pattern separation",
+]
+pitfalls = ["Presenting human adult neurogenesis as either settled-present or settled-absent"]
+refs = ["Sorrells et al. 2018", "Boldrini et al. 2018", "Moreno-Jimenez et al. 2019"]
+
+[[questions]]
+id = "preplay-planning"
+question = "What is preplay, and how do forward and reverse replay relate to planning and learning, including evidence in humans?"
+key_facts = [
+  "Preplay of future place-cell sequences (Dragoi & Tonegawa 2011), contested by later analyses",
+  "Replay content biased by goals and upcoming choices (Pfeiffer & Foster 2013)",
+  "Human evidence via MEG/fMRI decoding of replay-like reactivation",
+]
+pitfalls = ["Treating preplay as established without noting the debate"]
+refs = ["Dragoi & Tonegawa 2011", "Pfeiffer & Foster 2013", "Liu et al. 2019"]
+
+# ---------------------------------------------------------------- thalamus and TRN
+
+[[questions]]
+id = "thalamus-organization"
+question = "How is the thalamus organised into first-order and higher-order relays, core and matrix cell types, and driver versus modulator inputs?"
+key_facts = [
+  "First-order nuclei relay ascending subcortical input (e.g. LGN, MGN, VPL); higher-order nuclei relay cortical layer 5 output (e.g. pulvinar, POm, MD)",
+  "Driver vs modulator inputs (Sherman & Guillery): layer 5 corticothalamic axons are drivers; layer 6 axons are modulators",
+  "Core vs matrix cells (Jones): topographic layer 4 projections vs diffuse projections to superficial layers",
+]
+pitfalls = ["Describing the thalamus as a passive relay"]
+refs = ["Sherman & Guillery 1998", "Jones 2001", "Sherman 2016"]
+
+[[questions]]
+id = "trn-anatomy"
+question = "What is the thalamic reticular nucleus (TRN): its anatomy, inputs and outputs, neurotransmitter, and cell types?"
+key_facts = [
+  "GABAergic shell of neurons around the dorsal thalamus",
+  "Receives collaterals from corticothalamic and thalamocortical axons; projects to thalamic nuclei, not to neocortex",
+  "Subtypes including parvalbumin- and somatostatin-expressing neurons with distinct properties (Clemente-Perez et al. 2017; Li et al. 2020)",
+]
+pitfalls = ["Saying the TRN projects to cortex", "Treating the TRN as a single homogeneous population"]
+refs = ["Pinault 2004", "Clemente-Perez et al. 2017", "Li et al. 2020"]
+
+[[questions]]
+id = "spindles"
+question = "How are sleep spindles generated in the thalamocortical system, what is the role of the TRN and its ion channels, and what do spindles do for memory?"
+key_facts = [
+  "Spindles are ~11-16 Hz waxing-and-waning oscillations in NREM sleep, generated in the TRN-thalamocortical loop",
+  "TRN as pacemaker; T-type Ca2+ bursts and SK2 channels are involved (Cueni et al. 2008)",
+  "Spindle density correlates with memory consolidation; causal enhancement evidence in mice (Latchoumane et al. 2017)",
+]
+pitfalls = ["Attributing spindles to cortex alone", "Ignoring that human evidence is largely correlational"]
+refs = ["Steriade et al. 1993", "Cueni et al. 2008", "Latchoumane et al. 2017"]
+
+[[questions]]
+id = "burst-tonic"
+question = "What are thalamic burst and tonic firing modes, how do T-type calcium channels produce them, and what functional roles have been proposed?"
+key_facts = [
+  "T-type Ca2+ channels de-inactivate with hyperpolarization, producing low-threshold Ca2+ spikes and bursts; depolarized cells fire tonically",
+  "Burst mode proposed as a detection/'wake-up call' signal and tonic mode as faithful relay (Sherman 2001)",
+]
+pitfalls = ["Presenting the functional roles as settled"]
+refs = ["Llinas & Jahnsen 1982", "Sherman 2001"]
+
+[[questions]]
+id = "trn-attention"
+question = "What is the evidence for the TRN's role in attention and sensory gating, including Crick's searchlight hypothesis?"
+key_facts = [
+  "Crick 1984 searchlight hypothesis: TRN selects the thalamic activity that reaches cortex",
+  "Halassa et al. 2014: state-dependent limbic and sensory TRN subnetworks; Wimmer et al. 2015: prefrontal control of TRN in divided attention",
+]
+pitfalls = ["Treating the searchlight as proven; evidence is partial"]
+refs = ["Crick 1984", "Halassa et al. 2014", "Wimmer et al. 2015"]
+
+[[questions]]
+id = "trn-disease"
+question = "How is the TRN implicated in absence epilepsy, schizophrenia (spindle deficits), and other disorders?"
+key_facts = [
+  "Absence epilepsy: 3-4 Hz spike-wave discharges in humans involve thalamocortical loops and T-type Ca2+ channels; ethosuximide blocks T-type channels",
+  "Reduced sleep spindles in schizophrenia (Ferrarelli et al. 2007) with proposed TRN dysfunction",
+]
+pitfalls = ["Presenting TRN dysfunction as the established cause of schizophrenia"]
+refs = ["Huguenard & Prince 1994", "Ferrarelli & Tononi 2011", "Crunelli et al. 2020"]
+
+[[questions]]
+id = "anterior-thalamus"
+question = "What is the role of the anterior thalamic nuclei and the Papez circuit in memory, spatial navigation and amnesia?"
+key_facts = [
+  "Mammillary bodies -> anterior thalamic nuclei -> cingulate cortex/hippocampal formation as part of an extended hippocampal-diencephalic system",
+  "Anterior thalamic damage produces amnesia (Aggleton & Brown 1999); head-direction cells in anterodorsal nucleus",
+  "Korsakoff syndrome involves mammillary body and thalamic pathology",
+]
+pitfalls = ["Omitting that the anterior thalamus is a limbic hub, not only a sensory relay"]
+refs = ["Aggleton & Brown 1999", "Papez 1937"]
+
+[[questions]]
+id = "mediodorsal-pfc"
+question = "What does the mediodorsal thalamus contribute to prefrontal cortex function, working memory and cognitive flexibility?"
+key_facts = [
+  "Reciprocal MD-PFC connectivity; MD inhibition disrupts thalamofrontal connectivity and working memory (Parnaudeau et al. 2013)",
+  "MD amplifies prefrontal recurrent connectivity (Schmitt et al. 2017)",
+]
+pitfalls = ["Describing MD as merely relaying to PFC"]
+refs = ["Parnaudeau et al. 2013", "Schmitt et al. 2017", "Mitchell & Chakraborty 2013"]
+
+[[questions]]
+id = "pulvinar"
+question = "What does the pulvinar contribute to visual attention and to communication between cortical areas?"
+key_facts = [
+  "Higher-order thalamic nucleus with reciprocal connections to visual cortex",
+  "Pulvinar regulates cortical synchrony depending on attention (Saalmann et al. 2012)",
+]
+pitfalls = ["Treating the pulvinar as a simple visual relay like the LGN"]
+refs = ["Saalmann et al. 2012", "Kastner et al. 2020"]
+
+[[questions]]
+id = "thalamus-arousal-consciousness"
+question = "How does the thalamus contribute to arousal and consciousness, including evidence from central thalamic stimulation and anesthesia?"
+key_facts = [
+  "Central thalamic deep brain stimulation improved responsiveness in a patient in a minimally conscious state (Schiff et al. 2007)",
+  "Thalamic stimulation can reverse anesthesia in macaques (Redinbaugh et al. 2020)",
+]
+pitfalls = ["Conflating thalamic arousal effects with the brainstem reticular activating system", "Overclaiming a single neural seat of consciousness"]
+refs = ["Schiff et al. 2007", "Redinbaugh et al. 2020", "Bastos et al. 2021"]
+
+[[questions]]
+id = "motor-thalamus-loops"
+question = "How do the basal ganglia and cerebellum interact with the motor thalamus in cortico-basal ganglia-thalamocortical loops?"
+key_facts = [
+  "Basal ganglia output (GPi/SNr) is inhibitory onto motor thalamus (VA/VL); cerebellar output via deep nuclei is excitatory onto VL",
+  "Parallel loops (Alexander, DeLong & Strick 1986)",
+]
+pitfalls = ["Treating the loops as a single motor loop"]
+refs = ["Alexander et al. 1986"]
+
+# ---------------------------------------------------------------- integration and models
+
+[[questions]]
+id = "so-spindle-ripple"
+question = "How do cortical slow oscillations, thalamic spindles and hippocampal ripples coordinate during sleep, and what is the causal evidence for their role in memory consolidation?"
+key_facts = [
+  "Nesting of slow oscillations, spindles and ripples in human hippocampus (Staresina et al. 2015)",
+  "Triple phase-locking and causal spindle manipulation in mice (Latchoumane et al. 2017)",
+  "Targeted memory reactivation and closed-loop stimulation studies in humans",
+]
+pitfalls = ["Presenting human coupling correlations as proof of causation"]
+refs = ["Staresina et al. 2015", "Helfrich et al. 2019", "Latchoumane et al. 2017"]
+
+[[questions]]
+id = "hopfield-modern"
+question = "How do classical Hopfield/attractor models of CA3 relate to modern Hopfield networks and transformer attention, and what does neuroscience say about biological memory capacity?"
+key_facts = [
+  "Classical Hopfield capacity ~0.14 N patterns; modern Hopfield networks have much larger (exponential) capacity (Krotov & Hopfield 2016; Ramsauer et al. 2020)",
+  "Transformer attention corresponds to a modern Hopfield update (Ramsauer et al. 2020)",
+  "CA3 as a biological attractor network is an inference, not a demonstrated equivalence",
+]
+pitfalls = ["Claiming CA3 literally implements a transformer"]
+refs = ["Hopfield 1982", "Ramsauer et al. 2020", "Krotov & Hopfield 2016"]
+
+[[questions]]
+id = "tem-successor"
+question = "What do the Tolman-Eichenbaum Machine and the successor representation propose about the hippocampal-entorhinal system, and how do they compare?"
+key_facts = [
+  "Tolman-Eichenbaum Machine (Whittington et al. 2020): relational memory model producing grid- and place-cell-like representations from structural generalisation",
+  "Successor representation view of place cells (Stachenfeld et al. 2017): predictive map of expected future state occupancy",
+]
+pitfalls = ["Presenting either model as the accepted account"]
+refs = ["Whittington et al. 2020", "Stachenfeld et al. 2017"]
+
+[[questions]]
+id = "synthesis-memory-system"
+question = "Synthesize how hippocampal formation, thalamic nuclei (including the TRN and nucleus reuniens) and cortex jointly support encoding, consolidation and retrieval, and what remains unresolved."
+key_facts = [
+  "Integrates circuit, oscillation, and systems-level evidence from the other questions without contradicting them",
+  "States open problems: causal evidence in humans, engram vs index accounts, role of higher-order thalamus",
+]
+pitfalls = ["A list of facts without integration", "Unsupported claims not traceable to the other notes"]
+refs = []
