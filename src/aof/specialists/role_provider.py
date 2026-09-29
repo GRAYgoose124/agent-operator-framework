@@ -104,7 +104,9 @@ class RoleProvider:
     async def judge(self, claim: str, evidence: str) -> SpecialistResult | None:
         system = (
             "You verify claims against evidence. Verdicts: supported (the evidence states or clearly implies it), "
-            "contradicted (the evidence says otherwise), unsupported (the evidence does not address it), "
+            "contradicted (the evidence is about the SAME subject, condition and setting as the claim and says the "
+            "opposite), unsupported (the evidence does not address the claim; evidence about a different subject, "
+            "condition, species or setting is unsupported, never contradicted), "
             "needs_lookup (it cannot be judged without outside information). "
             "Use only the evidence given. Reply with JSON: " + json.dumps(
                 {"verdict": "|".join(VERDICTS), "rationale": "one sentence", "query": "optional search query"}

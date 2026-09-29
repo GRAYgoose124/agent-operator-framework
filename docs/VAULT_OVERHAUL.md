@@ -192,6 +192,45 @@ Conclusions that shaped the defaults:
 - Long-running work must survive a dead model server: `LlamaServerBackend` relaunches a dead `llama-server` and retries
   connection failures (after one crashed mid-run with no error in its log).
 
+## First full evaluation (neuroscience demo queue, 28 questions)
+
+`examples/queues/neuro_hippocampal_thalamic.toml` run end to end with local models (Qwen3-4B `small` and Qwythos-9B
+`large` via CUDA llama-server, PubMed + OpenAlex + Wikipedia, `--curate --verify-top 4`, then `verify --top 150`,
+`structure`, `assess`). Results are not committed; these are the numbers and what they taught us.
+
+| Metric | Value |
+|--------|-------|
+| live claims / archived (retained) | 2,586 / 712 |
+| duplicate rate (cosine >= 0.9 pairs per claim) | 0.01 |
+| orphan rate / avg links per claim | 0% / 5.4 |
+| hubs (two-level tree) / claims covered | 163 / 100% |
+| sourced | 100% (every claim is a verbatim quote with a URL) |
+| corroborated by >= 2 sources / verified by lookup | 3% / 2% |
+| rubric coverage (9B judge, top-4 retrieval) | 45 / 74 key facts (61%) |
+
+What the results showed, and what we changed because of it:
+
+- **Recall gaps, not precision gaps.** `so-spindle-ripple` scored 0/3: the landmark papers (Staresina 2015,
+  Latchoumane 2017) were never retrieved. PubMed relevance ranking plus model-written sub-queries misses specific
+  well-known works. Next: gap-driven research (decompose the question, check each part against the vault, run targeted
+  lookups for the uncovered parts).
+- **The rubric mixes content with attribution.** Many misses are facts phrased as "(Sherman 2001)"; abstracts rarely
+  state author-year attributions. Treat coverage as a lower bound and read the report's near-miss notes.
+- **Verification produced false alarms until constrained.** Of 150 claims verified, 22 were corroborated, 31
+  unsupported, 93 had no independent evidence, and all 4 "contradicted" flags were false (evidence about MDMA users,
+  toad vision, the cerebellum), even after the 9B confirmed them. Fixes: the judge prompt now says evidence about a
+  different subject is never a contradiction, a contradiction needs evidence with cosine >= 0.65 to the claim, and
+  `aof refine repair` removes flags already stored. Separately, "corroboration" by the *same paper under another
+  URL* was being counted; independence is now checked by DOI and by repeated quote text.
+- **Context-free claims remain the main quality issue.** "Increases happened in the ventral CA1..." has no subject;
+  the opener heuristic only catches discourse markers. A standalone-ness check on every claim is the next cheap win.
+- **Hubs need a hierarchy.** A single-level clustering produced hubs of 627 and 480 claims. Large hubs now split into
+  subtopic hubs recursively; the export index shows the whole tree.
+- **Operational lessons.** Sources rate-limit (429): per-host throttling, backoff and cooldown are essential. Long
+  runs must be resumable (`refined.json` marks completed questions) because processes do die; dead `llama-server`s
+  are relaunched, and children are bound to the parent's lifetime so a crash cannot leave orphans holding VRAM/RAM.
+  Similarity work must be matrix maths (`refine/vectors.py`), not pure-Python loops.
+
 ## Phases
 
 | # | Phase | Status |
@@ -202,7 +241,8 @@ Conclusions that shaped the defaults:
 | 2 | Specialist registry (capability → provider chain), Needle 3/2 adapter, role providers (LFM2 Nanos, Qwen, llama-server) | done |
 | 3 | Atomic notes + provenance schema; refine passes (extract, dedupe, merge, curate, verify) | done |
 | 4 | Link proposals + hub/structure notes | done |
-| 5 | Vault metrics + markdown export + rubric assessment (`aof refine assess`) | done; before/after evaluation in progress |
+| 5 | Vault metrics + markdown export + rubric assessment (`aof refine assess`) | done; first evaluation above |
+| 6 | Gap-driven research (decompose, check coverage, targeted lookups), standalone-ness check for every claim | next |
 
 ## Verified so far
 

@@ -8,13 +8,13 @@ annotated (subject/topic) by specialists. The quote is never paraphrased.
 from __future__ import annotations
 
 import logging
-import math
 import re
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Sequence
 
 from aof.refine.sources import SourceDoc
 from aof.refine.text import extract_entities, is_paper_meta, lexical_overlap, split_sentences
+from aof.refine.vectors import cosine, cosine_to  # noqa: F401  (cosine re-exported)
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +42,6 @@ class Claim:
     def standalone(self) -> str:
         """The sentence to show as the claim: the verified rewrite if there is one, else the verbatim quote."""
         return self.statement or self.text
-
-
-def cosine(a: Sequence[float], b: Sequence[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    return dot / (na * nb) if na and nb else 0.0
 
 
 def candidate_sentences(doc: SourceDoc, *, min_len: int = 50, max_len: int = 420) -> list[tuple[str, str]]:
@@ -100,7 +93,7 @@ async def extract_claims(
     if embed is not None:
         try:
             vectors = await embed([question] + sentences)
-            scores = [cosine(vectors[0], v) for v in vectors[1:]]
+            scores = cosine_to(vectors[0], vectors[1:]).tolist()
         except Exception as e:  # embedder unavailable: degrade to lexical relevance rather than fail the run
             logger.warning("embedding failed (%s); using lexical relevance", e)
     if scores is None:

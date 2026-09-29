@@ -80,6 +80,8 @@ uv run aof refine structure --workspace neuro   # links + hub notes
 uv run aof refine metrics   --workspace neuro   # duplicates, orphans, sourcing, verification
 uv run aof refine assess    --workspace neuro --queue-file examples/queues/neuro_hippocampal_thalamic.toml
 uv run aof refine export    --workspace neuro   # data/workspaces/neuro/export/
+uv run aof refine verify    --workspace neuro --top 150   # independent lookups for unverified claims
+uv run aof refine repair    --workspace neuro   # fix known defects in vaults from earlier versions
 ```
 
 ## Specialist models

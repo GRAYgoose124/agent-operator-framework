@@ -131,6 +131,10 @@ class LlamaServerConfig:
     n_gpu_layers: int = 99
     n_parallel: int = 1
     startup_timeout: int = 300
+    request_timeout: int = 180  # seconds; requests here take seconds, so a longer wait means a hung server
+    # Skip llama-server's host-RAM prompt cache and keep few context checkpoints: our prompts are short and varied,
+    # and the defaults (8 GiB cache, 32 checkpoints per slot) ballooned a server to ~15 GB of RAM. Needs a recent build.
+    lean_cache: bool = True
     extra_args: tuple[str, ...] = ()
     enable_thinking: bool = False  # most agent steps want the answer, not untagged chain-of-thought
     # Sampling overrides (None = server default). min_temperature floors any requested temperature:

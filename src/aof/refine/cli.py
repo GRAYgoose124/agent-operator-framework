@@ -47,6 +47,16 @@ def add_refine_parser(subparsers, common: argparse.ArgumentParser) -> None:
     workspace_only(structure_p)
     structure_p.add_argument("--link-min-sim", type=float, default=0.55)
     structure_p.add_argument("--hub-threshold", type=float, default=0.5)
+    structure_p.add_argument("--max-hub-size", type=int, default=60, help="Split hubs larger than this into subtopics")
+
+    repair_p = sub.add_parser("repair", help="Fix known defects in vaults written by earlier versions")
+    workspace_only(repair_p)
+
+    verify_p = sub.add_parser("verify", help="Look up unverified claims in independent works (core-graded first)")
+    workspace_only(verify_p)
+    verify_p.add_argument("--top", type=int, default=100, help="How many unverified claims to verify")
+    verify_p.add_argument("--concurrency", type=int, default=4)
+    verify_p.add_argument("--sources", default="pubmed,openalex,wikipedia")
 
     metrics_p = sub.add_parser("metrics", help="Vault quality metrics (duplicates, orphans, sourcing, verification)")
     workspace_only(metrics_p)
@@ -83,8 +93,8 @@ async def run_refine_command(args: argparse.Namespace, config: AppConfig) -> Non
     from aof.specialists import build_registry
     from aof.specialists.backends import RoleBackends
 
-    if args.refine_command not in ("run", "assess", "structure", "metrics", "export"):
-        print("Use: aof refine run|assess|structure|metrics|export --workspace NAME [--queue-file PATH]")
+    if args.refine_command not in ("run", "assess", "structure", "metrics", "export", "repair", "verify"):
+        print("Use: aof refine run|assess|structure|metrics|export|repair|verify --workspace NAME [--queue-file PATH]")
         return
     workspace = ensure_workspace(args.workspace)
     config = config_with_workspace(config, workspace.root)
@@ -124,7 +134,66 @@ async def run_refine_command(args: argparse.Namespace, config: AppConfig) -> Non
 
             print("Structured:", await structure_vault(
                 store, registry, link_min_sim=args.link_min_sim, hub_threshold=args.hub_threshold,
+                max_hub_size=args.max_hub_size,
             ))
+        elif args.refine_command == "repair":
+            from aof.refine.pipeline import registry_embedder
+            from aof.refine.repair import repair_false_corroboration
+
+            examined, repaired = await repair_false_corroboration(store)
+            print(f"Repair: {repaired} of {examined} corroborated claims had self-corroboration removed.")
+            embed = registry_embedder(registry)
+            if embed is not None:
+                import numpy as np
+
+                from aof.refine.repair import repair_weak_conflicts
+                from aof.refine.vectors import cosine
+
+                cache: dict[str, list[float]] = {}
+
+                async def prime(texts: list[str]) -> None:
+                    todo = [t for t in dict.fromkeys(texts) if t not in cache]
+                    if todo:
+                        cache.update(zip(todo, await embed(todo)))
+
+                # similarity() is synchronous, so embed every sentence involved up front
+                from aof.refine.assess import live_claims
+                from aof.refine.repair import _LINE, _split_sections
+
+                texts = []
+                for n in await live_claims(store):
+                    if "conflict" in n.tags:
+                        head, sections = _split_sections(n.content)
+                        texts.append(head)
+                        texts += [m.group(1) for ln in sections.get("Conflicting evidence", "").splitlines()
+                                  if (m := _LINE.match(ln.strip()))]
+                await prime(texts)
+                flagged, removed = await repair_weak_conflicts(store, lambda a, b: cosine(cache[a], cache[b]))
+                print(f"Repair: {removed} of {flagged} conflict flags removed (evidence not about the claim).")
+        elif args.refine_command == "verify":
+            import asyncio
+
+            from aof.refine.assess import live_claims
+            from aof.refine.pipeline import registry_embedder
+            from aof.refine.verify import apply_verification, verify_note
+
+            rank = {"grade:core": 0, "grade:supporting": 1}
+            todo = [n for n in await live_claims(store) if n.kind == "claim" and "**Corroboration**" not in n.content]
+            todo.sort(key=lambda n: min((rank.get(t, 2) for t in n.tags), default=2))
+            batch, embed = todo[: args.top], registry_embedder(registry)
+            sources = build_sources([s.strip() for s in args.sources.split(",") if s.strip()])
+            gate, verdicts = asyncio.Semaphore(args.concurrency), []
+
+            async def one(note):
+                async with gate:
+                    v = await verify_note(note, registry=registry, sources=sources, embed=embed)
+                    await apply_verification(store, note, v)
+                    verdicts.append(v.verdict)
+
+            await asyncio.gather(*(one(n) for n in batch))
+            from collections import Counter
+
+            print(f"Verified {len(batch)} of {len(todo)} unverified claims:", dict(Counter(verdicts)))
         elif args.refine_command == "metrics":
             from aof.refine.metrics import compute_metrics
 

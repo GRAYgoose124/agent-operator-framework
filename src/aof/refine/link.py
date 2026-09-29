@@ -9,9 +9,11 @@ from __future__ import annotations
 from collections import Counter
 from typing import Sequence
 
+import numpy as np
+
 from aof.memory.store import MemoryStore
 from aof.memory.zettel import ZettelNote
-from aof.refine.claims import cosine
+from aof.refine.vectors import cosine_matrix
 
 
 def entities_of(note: ZettelNote) -> set[str]:
@@ -40,18 +42,24 @@ def propose_links(
     per_note: int = 3,
 ) -> dict[str, set[str]]:
     """Mutual link sets {note id: {linked ids}} with at most ~`per_note` outgoing links proposed per note."""
-    shared_ok = specific_entities(notes)
-    ents = {n.id: entities_of(n) & shared_ok for n in notes}
-    candidates: dict[str, list[tuple[float, str]]] = {n.id: [] for n in notes}
-    for i, a in enumerate(notes):
-        for b in notes[i + 1:]:
-            sim = cosine(vectors[a.id], vectors[b.id])
-            if sim >= max_sim:
-                continue  # a near-duplicate, not a relation
-            score = sim + entity_bonus * len(ents[a.id] & ents[b.id])
-            if score >= min_sim:
-                candidates[a.id].append((score, b.id))
-                candidates[b.id].append((score, a.id))
+    n = len(notes)
+    if n < 2:
+        return {x.id: set() for x in notes}
+    sims = cosine_matrix([vectors[x.id] for x in notes])
+    # Shared *specific* entities per pair, as a matrix product over an entity-incidence matrix.
+    shared_ok = sorted(specific_entities(notes))
+    entity_index = {e: i for i, e in enumerate(shared_ok)}
+    incidence = np.zeros((n, max(1, len(shared_ok))), dtype=np.float32)
+    for row, note in enumerate(notes):
+        for e in entities_of(note) & set(shared_ok):
+            incidence[row, entity_index[e]] = 1.0
+    score = sims + entity_bonus * (incidence @ incidence.T)
+    pairs = np.argwhere(np.triu((score >= min_sim) & (sims < max_sim), k=1))  # < max_sim: near-duplicates are not relations
+    candidates: dict[str, list[tuple[float, str]]] = {x.id: [] for x in notes}
+    for i, j in pairs:
+        a_id, b_id, sc = notes[int(i)].id, notes[int(j)].id, float(score[i, j])
+        candidates[a_id].append((sc, b_id))
+        candidates[b_id].append((sc, a_id))
     links: dict[str, set[str]] = {n.id: set() for n in notes}
     for nid, options in candidates.items():
         for _, other in sorted(options, reverse=True)[:per_note]:

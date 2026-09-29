@@ -116,7 +116,7 @@ async def test_clusters_recover_the_topics_and_hubs_are_extractive(vault):
             assert claim_text(member) in hub.content  # extractive: the claim text itself, no new prose
     again = await build_hubs(store, [await store.get_note(n.id) for n in notes], vectors, registry=None, threshold=0.4)
     assert sorted(h.id for h in again) == sorted(h.id for h in hubs)  # idempotent: same hubs, refreshed
-    assert len(await store.get_notes_by_tags(["hub"])) == len(hubs)
+    assert len(await store.get_notes_by_tags(["hub"], exclude_tags=["archived"])) == len(hubs)
 
 
 def test_keyword_title_uses_member_vocabulary():
@@ -180,3 +180,98 @@ async def test_export_is_lossless_and_wikilinked(vault, tmp_path):
     hub_text = next((out / "hubs").iterdir()).read_text(encoding="utf-8")
     assert "[[c-" in hub_text and "|" in hub_text  # aliased wikilinks like [[id|readable title]]
     assert "Sources.md" and (out / "Sources.md").read_text(encoding="utf-8").count("https://") >= 15
+
+
+# -- nested hubs and stale-hub retirement (crafted vectors: no model needed) ---------------------------------
+
+def _crafted_vault():
+    """Topic A = two subtopics with centre cosine ~0.55 (merge at 0.5, split at 0.62); topic B is separate."""
+    import random
+
+    from aof.memory.zettel import ZettelNote
+
+    rng = random.Random(3)
+    a = 0.904  # cos(A1, A2) = 1 / (1 + a^2) ~ 0.55
+    dim = 12
+
+    def vec(*pairs):
+        v = [rng.gauss(0, 0.01) for _ in range(dim)]
+        for axis, weight in pairs:
+            v[axis] += weight
+        return v
+
+    notes, vectors = [], {}
+    for i in range(40):
+        for name, pairs in (("a1", [(0, 1.0), (2, a)]), ("a2", [(0, 1.0), (3, a)])):
+            nid = f"{name}-{i}"
+            notes.append(ZettelNote(id=nid, title=nid, content=f"{name} claim number {i} about topic a.", tags=["claim"], kind="claim"))
+            vectors[nid] = vec(*pairs)
+    for i in range(10):
+        nid = f"b-{i}"
+        notes.append(ZettelNote(id=nid, title=nid, content=f"b claim {i} about topic b.", tags=["claim"], kind="claim"))
+        vectors[nid] = vec((1, 1.0))
+    return notes, vectors
+
+
+def test_large_hub_is_split_into_subtopic_hubs():
+    from aof.refine.hubs import hub_tree
+
+    notes, vectors = _crafted_vault()
+    tree = hub_tree(notes, vectors, threshold=0.5, min_size=3, max_size=60, step=0.12)
+    big = max(tree, key=lambda n: len(n.members))
+    assert len(big.members) == 80 and len(big.children) == 2
+    assert sorted(len(c.members) for c in big.children) == [40, 40]
+    for child in big.children:  # each subtopic is pure
+        assert len({n.id.split("-")[0] for n in child.members}) == 1
+    small = min(tree, key=lambda n: len(n.members))
+    assert small.children == [] and len(small.members) == 10
+
+
+async def test_build_hubs_makes_a_tree_and_retires_stale_hubs(tmp_path):
+    store = MemoryStore(MemoryConfig(db_path=str(tmp_path / "m.db"), notes_dir=str(tmp_path / "notes")))
+    await store.initialize()
+    try:
+        crafted, vectors = _crafted_vault()
+        notes = []
+        for n in crafted:
+            notes.append(await store.create_note(n.title, n.content, ["claim"], note_id=n.id, kind="claim", status="refined",
+                                                 sources=[f"https://x.org/{n.id}"]))
+        hubs = await build_hubs(store, notes, vectors, registry=None, threshold=0.5, max_hub_size=60)
+        levels = sorted(next(t for t in h.tags if t.startswith("hub-level:")) for h in hubs)
+        assert levels == ["hub-level:0", "hub-level:0", "hub-level:1", "hub-level:1"]
+        parent = next(h for h in hubs if "hub-level:0" in h.tags and any(i.startswith("hub-1-") for i in h.links))
+        assert "**Subtopics**" in parent.content and len([i for i in parent.links if i.startswith("hub-1-")]) == 2
+        member = await store.get_note("a1-0")
+        assert any(i.startswith("hub-1-") for i in member.links)  # linked to its most specific hub
+
+        # Rebuilding from only topic B retires topic A's hubs (archived, not deleted) and unlinks their claims.
+        only_b = [await store.get_note(n.id) for n in crafted if n.id.startswith("b-")]
+        again = await build_hubs(store, only_b, {k: v for k, v in vectors.items() if k.startswith("b-")}, registry=None)
+        live_ids = {h.id for h in await store.get_notes_by_tags(["hub"], exclude_tags=["archived"], limit=100)}
+        assert live_ids == {h.id for h in again}
+        old = await store.get_note(parent.id)
+        assert old.status == "archived" and "archived" in old.tags
+        assert not any(i.startswith("hub-") for i in (await store.get_note("a1-0")).links)
+    finally:
+        await store.close()
+
+
+async def test_export_index_shows_every_hub_level(tmp_path):
+    store = MemoryStore(MemoryConfig(db_path=str(tmp_path / "m.db"), notes_dir=str(tmp_path / "notes")))
+    await store.initialize()
+    try:
+        crafted, vectors = _crafted_vault()
+        notes = [
+            await store.create_note(n.title, n.content, ["claim"], note_id=n.id, kind="claim", status="refined",
+                                    sources=[f"https://x.org/{n.id}"])
+            for n in crafted
+        ]
+        hubs = await build_hubs(store, notes, vectors, registry=None, threshold=0.5, max_hub_size=60)
+        await export_vault(store, tmp_path / "out", title="Tree")
+        index = (tmp_path / "out" / "Index.md").read_text(encoding="utf-8")
+        parent = next(h for h in hubs if "hub-level:0" in h.tags and any(i.startswith("hub-1-") for i in h.links))
+        child_lines = [ln for ln in index.splitlines() if "[[hub-1-" in ln]
+        assert child_lines and all(ln.startswith("    - ") for ln in child_lines)  # nested one level under a parent
+        assert f"[[{parent.id}|" in index and "80 claims" in index
+    finally:
+        await store.close()

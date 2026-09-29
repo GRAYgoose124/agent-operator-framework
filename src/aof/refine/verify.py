@@ -12,19 +12,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Sequence
 
 from aof.memory.store import MemoryStore
 from aof.memory.zettel import ZettelNote
-from aof.refine.claims import Embedder, candidate_sentences, cosine
+from aof.refine.claims import Embedder, candidate_sentences
+from aof.refine.vectors import cosine_to
 from aof.refine.sources import Source, SourceDoc, doc_key, gather_documents
-from aof.refine.text import keyword_query, lexical_overlap
+from aof.refine.text import keyword_query, lexical_overlap, normalize
 from aof.specialists import CLASSIFY, JUDGE, SpecialistExhausted, SpecialistRegistry
 
 logger = logging.getLogger(__name__)
 
 LARGE = "role:large"
+# A contradiction needs evidence that is about the same claim; loosely related sentences (same broad area,
+# different subject) are only ever "unsupported". Measured: without this floor, all 4 flags in a 150-claim run
+# were false alarms (MDMA users, toad vision, the cerebellum).
+CONTRADICTION_MIN_SIM = 0.65
 
 
 @dataclass
@@ -41,23 +47,47 @@ def claim_text(note: ZettelNote) -> str:
     return note.content.split("\n\n**Evidence**")[0].strip()
 
 
+def same_statement(a: str, b: str) -> bool:
+    """True if two sentences are the same statement (identical after normalisation, or near-identical tokens)."""
+    return normalize(a) == normalize(b) or lexical_overlap(a, b) >= 0.85
+
+
+def own_quotes(note: ZettelNote) -> list[str]:
+    """The verbatim quotes a note already rests on (its headline claim and its Evidence block)."""
+    quotes = [claim_text(note)]
+    quotes += re.findall(r'^- "(.*)" \u2014 ', note.content.split("**Corroboration**")[0], flags=re.MULTILINE)
+    return quotes
+
+
+def url_work_key(url: str) -> str:
+    """Work identity for a stored source URL (DOI when the URL is a DOI link), matching `doc_key`."""
+    if "doi.org/" in url:
+        return "doi:" + re.sub(r"^https?://(dx\.)?doi\.org/", "", url.lower())
+    return "url:" + url
+
+
 async def _best_sentences(
     claim: str, docs: Sequence[SourceDoc], embed: Embedder | None, top_k: int, min_sim: float,
-) -> list[tuple[str, SourceDoc]]:
-    pool = [(s, d) for d in docs for s, _ in candidate_sentences(d)]
+    exclude: Sequence[str] = (),
+) -> list[tuple[str, SourceDoc, float]]:
+    """Best-matching (sentence, doc, similarity), never the claim itself or a quote the note already rests on."""
+    pool = [
+        (s, d) for d in docs for s, _ in candidate_sentences(d)
+        if not any(same_statement(s, q) for q in exclude)
+    ]
     if not pool:
         return []
     if embed is not None:
         try:
             vectors = await embed([claim] + [s for s, _ in pool])
-            scores = [cosine(vectors[0], v) for v in vectors[1:]]
+            scores = cosine_to(vectors[0], vectors[1:]).tolist()
         except Exception as e:
             logger.warning("embedding failed during verification (%s); using lexical match", e)
             scores = [lexical_overlap(claim, s) * 2 for s, _ in pool]
     else:
         scores = [lexical_overlap(claim, s) * 2 for s, _ in pool]
     ranked = sorted(range(len(pool)), key=lambda i: -scores[i])[:top_k]
-    return [pool[i] for i in ranked if scores[i] >= min_sim]
+    return [(*pool[i], float(scores[i])) for i in ranked if scores[i] >= min_sim]
 
 
 async def verify_note(
@@ -73,18 +103,24 @@ async def verify_note(
     """Look the note's claim up in works other than its own sources and judge it against what turns up."""
     claim = claim_text(note)
     own = set(note.sources)
+    own_keys = {url_work_key(u) for u in own}
     docs = await gather_documents(sources, [keyword_query(claim), claim], per_source)
-    # Independent evidence only: skip the works this claim already came from.
-    docs = [d for d in docs if d.url not in own and doc_key(d) not in {f"url:{u}" for u in own}]
-    evidence = await _best_sentences(claim, docs, embed, top_k, min_sim)
-    if not evidence:
+    # Independent evidence only: skip the works this claim already came from (same URL or same DOI) ...
+    docs = [d for d in docs if d.url not in own and doc_key(d) not in own_keys]
+    # ... and, since the same paper reappears under other URLs, any sentence that repeats a quote we already have.
+    scored = await _best_sentences(claim, docs, embed, top_k, min_sim, exclude=own_quotes(note))
+    if not scored:
         return Verification("no_evidence")
+    evidence = [(s, d) for s, d, _ in scored]
+    closest = max(sim for _, _, sim in scored)
     text = "\n".join(f"- {s} [{d.title[:60]}]" for s, d in evidence)
     try:
         first = await registry.call(JUDGE, claim, text)
     except SpecialistExhausted:
         return Verification("no_evidence", evidence)
     verdict = first.value["verdict"]
+    if verdict == "contradicted" and closest < CONTRADICTION_MIN_SIM:
+        verdict = "unsupported"  # evidence too distant to be about the same claim: not a contradiction
     result = Verification(verdict, evidence, first.provider, rationale=str(first.value.get("rationale", "")))
     if verdict == "contradicted" and first.provider != LARGE:
         try:  # confirm a negative with the strongest judge before flagging anything

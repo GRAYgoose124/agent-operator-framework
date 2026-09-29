@@ -25,6 +25,7 @@ import aiohttp
 from aof.config import LlamaServerConfig, LocalServerConfig
 from aof.inference.backend import CompletionResult
 from aof.inference.openai_backend import LocalServerBackend
+from aof.inference.proc_util import bind_to_parent_lifetime, parent_death_preexec
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,8 @@ class LlamaServerBackend:
         self._base_url = ""
         self._closed = False
         self._restart_lock = asyncio.Lock()
-        self.restarts = 0  # times the server was found dead and relaunched
+        self.restarts = 0  # times the server was found dead or hung and relaunched
+        self.last_exit_code: int | None = None  # exit code of the most recent server process that ended
 
     def _command(self, binary: str, port: int) -> list[str]:
         s = self._server
@@ -93,7 +95,8 @@ class LlamaServerBackend:
             "--host", s.host,
             "--port", str(port),
             "--jinja",
-            *s.extra_args,
+            *(["--cache-ram", "0", "--ctx-checkpoints", "2"] if s.lean_cache else []),
+            *s.extra_args,  # later flags win, so extra_args can override the lean defaults
         ]
 
     async def start(self) -> None:
@@ -113,7 +116,9 @@ class LlamaServerBackend:
             self._proc = subprocess.Popen(
                 self._command(binary, port),
                 stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=flags,
+                preexec_fn=parent_death_preexec(),
             )
+        bind_to_parent_lifetime(self._proc)  # never leave an orphan server holding VRAM/RAM if we crash
         atexit.register(self._kill)
         self._base_url = f"http://{self._server.host}:{port}"
         try:
@@ -124,6 +129,7 @@ class LlamaServerBackend:
         cfg = LocalServerConfig(
             base_url=f"{self._base_url}/v1",
             api_key="none",
+            timeout=self._server.request_timeout,
             model=Path(self._model_path).name,
             enable_thinking=self._server.enable_thinking,
             top_p=self._server.top_p,
@@ -163,12 +169,17 @@ class LlamaServerBackend:
 
     def _kill(self) -> None:
         proc, self._proc = self._proc, None
-        if proc and proc.poll() is None:
+        if proc is None:
+            return
+        if proc.poll() is None:
             proc.terminate()
             try:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.wait()
+        else:
+            self.last_exit_code = proc.returncode  # it died on its own: remember how
 
     async def _ensure_alive(self) -> None:
         """Relaunch the server if its process has exited (crash, external kill); log why."""
@@ -176,7 +187,7 @@ class LlamaServerBackend:
             proc = self._proc
             if self._closed or (proc is not None and proc.poll() is None):
                 return
-            code = proc.returncode if proc is not None else None
+            code = proc.returncode if proc is not None else self.last_exit_code
             logger.warning(
                 "llama-server for %s is not running (exit code %s); restarting. Last log lines:\n%s",
                 Path(self._model_path).name, code, self._log_tail(),
@@ -188,15 +199,19 @@ class LlamaServerBackend:
             await self._spawn()
 
     async def _request(self, call):
-        """Run `call(client)`, restarting the server and retrying if it died. Timeouts are not retried."""
+        """Run `call(client)`, relaunching the server and retrying if it died or hung.
+
+        Requests are short (bounded max_tokens), so hitting `request_timeout` means the server is wedged.
+        """
         last: Exception | None = None
         for _ in range(3):
             await self._ensure_alive()
             assert self._client is not None, "Call start() first"
             try:
                 return await call(self._client)
-            except aiohttp.ClientConnectionError as e:  # refused / reset / disconnected
+            except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:  # refused / reset / hung
                 last = e
+                logger.warning("llama-server request failed (%s: %s); relaunching", type(e).__name__, e)
                 self._kill()  # make the next _ensure_alive relaunch even if the process still looks alive
         assert last is not None
         raise last

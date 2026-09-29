@@ -10,9 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
+import numpy as np
+
 from aof.memory.store import MemoryStore
 from aof.memory.zettel import ZettelNote
-from aof.refine.claims import cosine
+from aof.refine.vectors import cosine_to
 from aof.refine.pipeline import registry_embedder
 from aof.refine.verify import claim_text
 from aof.research.queue_file import QuestionSpec
@@ -64,10 +66,12 @@ async def assess_question(
         result.facts = [FactResult(f, "no_notes") for f in spec.key_facts]
         return result
 
+    note_vectors = [vectors[n.id] for n in notes]
+
     async def nearest(text: str) -> list[ZettelNote]:
         v = (await embed([text]))[0]
-        ranked = sorted(notes, key=lambda n: -cosine(v, vectors[n.id]))
-        return ranked[:top_k]
+        order = np.argsort(-cosine_to(v, note_vectors), kind="stable")[:top_k]
+        return [notes[int(i)] for i in order]
 
     for fact in spec.key_facts:
         best = await nearest(fact)

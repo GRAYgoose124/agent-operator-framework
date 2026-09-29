@@ -32,18 +32,39 @@ def _frontmatter(n: ZettelNote) -> str:
     return "\n".join(lines)
 
 
-def _wikilinks(text: str, titles: dict[str, str]) -> str:
-    return re.sub(r"\[\[([^\]|]+)\]\]", lambda m: f"[[{m.group(1)}|{titles.get(m.group(1), m.group(1))[:80]}]]", text)
+def _short(title: str, limit: int = 60) -> str:
+    """Title cut at a word boundary (no mid-word truncation)."""
+    return title if len(title) <= limit else title[:limit].rsplit(" ", 1)[0] + "\u2026"
+
+
+def _wikilinks(text: str, titles: dict[str, str], alias: str | None = None) -> str:
+    """`[[id]]` -> `[[id|readable title]]` (or a fixed `alias`, for lists that already print the claim text)."""
+    return re.sub(
+        r"\[\[([^\]|]+)\]\]",
+        lambda m: f"[[{m.group(1)}|{alias or _short(titles.get(m.group(1), m.group(1)))}]]",
+        text,
+    )
 
 
 def _body(n: ZettelNote, titles: dict[str, str]) -> str:
-    body = _wikilinks(n.content, titles)
+    body = _wikilinks(n.content, titles, alias="open" if n.kind == "hub" else None)
     related = [i for i in n.links if i in titles and f"[[{i}" not in body]
     if related:
-        body += "\n\n## Related\n" + "\n".join(f"- [[{i}|{titles[i][:80]}]]" for i in related)
+        body += "\n\n## Related\n" + "\n".join(f"- [[{i}|{_short(titles[i], 80)}]]" for i in related)
     if n.supersedes:
         body += "\n\n## Merged from\n" + "\n".join(f"- [[{i}]]" for i in n.supersedes)
     return body
+
+
+def _claim_ids(hub: ZettelNote, by_id: dict[str, ZettelNote]) -> set[str]:
+    """Claims reachable from a hub through its subtopic hubs."""
+    out: set[str] = set()
+    for i in hub.links:
+        if i in by_id:
+            out |= _claim_ids(by_id[i], by_id)
+        else:
+            out.add(i)
+    return out
 
 
 async def export_vault(
@@ -56,7 +77,7 @@ async def export_vault(
     """Write the vault under `out_dir`. Returns counts of files written per folder."""
     out = Path(out_dir)
     claims_all = await store.get_notes_by_tags(["claim"], limit=100000)
-    hubs = await store.get_notes_by_tags(["hub"], limit=100000)
+    hubs = await store.get_notes_by_tags(["hub"], limit=100000, exclude_tags=["archived"])
     live = [n for n in claims_all if n.status != "archived"]
     archived = [n for n in claims_all if n.status == "archived"]
     titles = {n.id: n.title for n in [*claims_all, *hubs]}
@@ -78,7 +99,16 @@ async def export_vault(
         for u in n.sources:
             sources.setdefault(u, []).append(n.id)
     lines = [f"# {title}", "", f"{len(live)} claims, {len(hubs)} hubs, {len(sources)} sources.", "", "## Topics", ""]
-    lines += [f"- [[{h.id}|{h.title}]] ({len(h.links)})" for h in sorted(hubs, key=lambda h: -len(h.links))]
+    by_id = {h.id: h for h in hubs}
+    size = {h.id: len(_claim_ids(h, by_id)) for h in hubs}
+    top = [h for h in hubs if "hub-level:0" in h.tags or not any(t.startswith("hub-level:") for t in h.tags)]
+    def tree(h: ZettelNote, depth: int) -> None:
+        lines.append("    " * depth + f"- [[{h.id}|{h.title}]] ({size[h.id]} claims)")
+        for c in sorted((by_id[i] for i in h.links if i in by_id), key=lambda c: -size[c.id]):
+            tree(c, depth + 1)
+
+    for h in sorted(top, key=lambda h: -size[h.id]):
+        tree(h, 0)
     hub_members = {i for h in hubs for i in h.links}
     loose = [n for n in live if n.id not in hub_members]
     if loose:

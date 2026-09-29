@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from typing import Sequence
+
+import numpy as np
 from urllib.parse import urlparse
 
 from aof.memory.store import MemoryStore
 from aof.memory.zettel import ZettelNote
 from aof.refine.assess import live_claims
-from aof.refine.claims import cosine
+from aof.refine.vectors import cosine_matrix
 from aof.refine.pipeline import registry_embedder
 from aof.refine.verify import claim_text
 from aof.specialists import SpecialistRegistry
@@ -64,7 +66,7 @@ def measure(
     m = VaultMetrics(live_claims=n, archived=archived, hubs=len(hubs))
     if n == 0:
         return m
-    hub_members = {i for h in hubs for i in h.links}
+    hub_members = {i for h in hubs for i in h.links}  # includes claims listed by any hub, at any level
     m.orphan_rate = sum(1 for x in live if not x.links) / n
     m.avg_links = sum(len(x.links) for x in live) / n
     m.hub_coverage = sum(1 for x in live if x.id in hub_members) / n
@@ -75,19 +77,16 @@ def measure(
     for x in live:
         for host in {_host(u) for u in x.sources}:
             m.source_mix[host] = m.source_mix.get(host, 0) + 1
-    if vectors:
-        pairs = sum(
-            1 for i, a in enumerate(live) for b in live[i + 1:]
-            if cosine(vectors[a.id], vectors[b.id]) >= duplicate_threshold
-        )
-        m.duplicate_rate = pairs / n
+    if vectors and n > 1:
+        sims = cosine_matrix([vectors[x.id] for x in live])
+        m.duplicate_rate = int(np.triu(sims >= duplicate_threshold, k=1).sum()) / n
     return m
 
 
 async def compute_metrics(store: MemoryStore, registry: SpecialistRegistry | None = None) -> VaultMetrics:
     live = [n for n in await live_claims(store) if n.kind == "claim"]
     everything = await store.get_notes_by_tags(["claim"], limit=100000)
-    hubs = await store.get_notes_by_tags(["hub"], limit=100000)
+    hubs = await store.get_notes_by_tags(["hub"], limit=100000, exclude_tags=["archived"])
     vectors = None
     embed = registry_embedder(registry) if registry is not None else None
     if embed and live:

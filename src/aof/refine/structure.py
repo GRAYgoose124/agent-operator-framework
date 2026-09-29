@@ -18,6 +18,7 @@ async def structure_vault(
     link_min_sim: float = 0.55,
     hub_threshold: float = 0.5,
     hub_min_size: int = 3,
+    max_hub_size: int = 60,
 ) -> dict[str, int]:
     """Link live claims and (re)build hubs. Safe to re-run: links are merged and hubs are refreshed in place."""
     embed = registry_embedder(registry)
@@ -30,5 +31,6 @@ async def structure_vault(
     linked = await apply_links(store, notes, propose_links(notes, vectors, min_sim=link_min_sim))
     hubs = await build_hubs(
         store, notes, vectors, registry=registry, threshold=hub_threshold, min_size=hub_min_size,
+        max_hub_size=max_hub_size,
     )
     return {"claims": len(notes), "linked": linked, "hubs": len(hubs)}

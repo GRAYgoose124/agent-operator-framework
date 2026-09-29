@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from aof.refine.claims import Claim, cosine
+import numpy as np
+
+from aof.refine.claims import Claim
+from aof.refine.vectors import cosine_matrix
 from aof.refine.text import lexical_overlap, normalize
 
 _SECTION_RANK = {"conclusions": 3, "conclusion": 3, "results": 2, "result": 2, "discussion": 1}
@@ -45,13 +48,15 @@ def cluster_claims(
             uf.union(i, by_key[key])
         else:
             by_key[key] = i
-    for i in range(n):
-        for j in range(i + 1, n):
-            if uf.find(i) == uf.find(j):
-                continue
-            sim = cosine(vectors[i], vectors[j]) if vectors is not None else lexical_overlap(claims[i].text, claims[j].text)
-            if sim >= (threshold if vectors is not None else lexical_threshold):
-                uf.union(i, j)
+    if vectors is not None:
+        sims = cosine_matrix(vectors)
+        for i, j in np.argwhere(np.triu(sims >= threshold, k=1)):
+            uf.union(int(i), int(j))
+    else:
+        for i in range(n):
+            for j in range(i + 1, n):
+                if uf.find(i) != uf.find(j) and lexical_overlap(claims[i].text, claims[j].text) >= lexical_threshold:
+                    uf.union(i, j)
     groups: dict[int, list[int]] = {}
     for i in range(n):
         groups.setdefault(uf.find(i), []).append(i)
