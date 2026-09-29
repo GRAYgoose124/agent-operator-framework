@@ -49,3 +49,4 @@ A-mem-sys/
 
 # Machine-specific config overrides
 config.local.toml
+docs.local/

@@ -71,7 +71,7 @@ uv run aof researcher run --workspace myproject
 
 `aof refine` builds a vault from a question set: it gathers peer-reviewed evidence, extracts claims as verbatim
 quotes, merges duplicates losslessly, curates, verifies, links, builds hub notes, and exports Obsidian-ready markdown.
-Small models do narrow jobs; the framework owns the loop. See [docs/VAULT_OVERHAUL.md](docs/VAULT_OVERHAUL.md).
+Small models do narrow jobs; the framework owns the loop.
 
 ```bash
 uv run aof refine --log-level WARNING run --workspace neuro \
@@ -82,13 +82,18 @@ uv run aof refine assess    --workspace neuro --queue-file examples/queues/neuro
 uv run aof refine export    --workspace neuro   # data/workspaces/neuro/export/
 uv run aof refine verify    --workspace neuro --top 150   # independent lookups for unverified claims
 uv run aof refine repair    --workspace neuro   # fix known defects in vaults from earlier versions
+uv run aof refine standalone --workspace neuro  # rewrite context-dependent claims (verified against their quote)
+uv run aof refine gaps      --workspace neuro --queue-file examples/queues/neuro_hippocampal_thalamic.toml
 ```
+
+`gaps` decomposes each question into the facts a complete answer needs, grades how well the vault already covers each,
+and researches only the uncovered parts. Long runs are resumable (completed questions are recorded per workspace).
 
 ## Specialist models
 
 Small task-specific models (Needle, Liquid Nanos, any configured role) are exposed as *capabilities* with cheap-first
 fallback chains (`[specialists.<capability>] providers = [...]`). Needle is optional: `uv sync --extra needle`
-(sets `NEEDLE_TELEMETRY=0`). See [docs/VAULT_OVERHAUL.md](docs/VAULT_OVERHAUL.md).
+(sets `NEEDLE_TELEMETRY=0`).
 
 ## Running through llama.cpp
 

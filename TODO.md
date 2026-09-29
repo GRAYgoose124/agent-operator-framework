@@ -13,12 +13,15 @@
 
 ## Next (immediate focus)
 
-- [ ] VectorHaSH-inspired associative memory (see `docs/SOTA_RESEARCH_PLAN.md`)
+- [ ] VectorHaSH-inspired associative memory
 - [ ] Agents spend too many tokens on filler words. Agents need to spend more words directly. (Use /no_think in more cases it matters, or properly trim output for steps/contexts.)
 
 ## In Progress
 
-- [ ] Knowledge-vault overhaul: see `docs/VAULT_OVERHAUL.md` (llama-server backend, specialist registry incl. Needle 3/2 + LFM2 Nanos, atomic notes + provenance, refine passes, vault export + metrics).
+- [ ] Knowledge-vault overhaul. Done: llama-server backend, specialist registry (Needle 3/2, role models),
+  atomic notes with provenance, `aof refine` (gather, extract, merge, curate, verify, link, hubs, metrics, export, assess),
+  standalone-ness check, gap-driven research. Next: raise rubric coverage further (recall of landmark papers, full-text
+  evidence), corroboration beyond abstracts, hub quality (merge near-identical hubs), Needle-based field extraction.
 
 ## Planned
 

@@ -1,0 +1,27 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    env:
+      NEEDLE_TELEMETRY: "0"
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install (llama-cpp-python compiles from source: needs a C/C++ toolchain, present on both runners)
+        run: uv sync --extra dev --python ${{ matrix.python }}
+      - name: Tests (model-, GPU- and network-dependent tests skip themselves when unavailable)
+        run: uv run --extra dev --python ${{ matrix.python }} python -m pytest tests -q -p no:logging

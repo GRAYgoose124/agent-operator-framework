@@ -115,8 +115,9 @@ SQLite FTS5 + markdown files in `data/memory/` (git-versioned). Strategies: sear
 | `agent/pool.py` | Concurrent agent pool with multi-model routing |
 | `refine/pipeline.py` | Evidence-first refinement of one question (plan, gather, extract, cluster, decontextualise, store, curate, verify) |
 | `refine/sources.py` | Evidence sources: PubMed, OpenAlex, Wikipedia, web; `doc_key` merges copies of one work |
+| `refine/{gaps,standalone,repair,vectors}.py` | Gap-driven research, standalone-ness check, repairs for older vaults, NumPy similarity maths |
 | `refine/{link,hubs,structure,metrics,export,assess}.py` | Links, hub notes, vault metrics, Obsidian export, rubric assessment |
-| `specialists/registry.py` | Capability -> provider-chain cascade (Needle 3/2, role models, embeddings); see `docs/VAULT_OVERHAUL.md` |
+| `specialists/registry.py` | Capability -> provider-chain cascade (Needle 3/2, role models, embeddings) |
 | `inference/llama_server.py` | Managed llama.cpp `llama-server` backend (roles in `[llama_server] roles`); see `docs/llama-cpp.md` |
 | `agent/lifecycle.py` | Single agent state machine |
 | `agent/evaluator.py` | Health scoring, canary tests |

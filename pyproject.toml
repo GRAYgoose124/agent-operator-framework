@@ -2,6 +2,8 @@
 name = "agent-operator-framework"
 version = "0.1.0"
 description = "Concurrent small-LLM agent framework with Zettelkasten memory and verified tool creation"
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
     "llama-cpp-python>=0.3",
