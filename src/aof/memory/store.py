@@ -298,14 +298,13 @@ class MemoryStore:
         assert self._db is not None
         if not tags:
             return []
-        conditions = " OR ".join("tags LIKE ?" for _ in tags)
+        conditions = "(" + " OR ".join("tags LIKE ?" for _ in tags) + ")"
         params: list = [f'%"{t}"%' for t in tags]
-        if exclude_tags:
-            for et in exclude_tags:
-                conditions += " AND tags NOT LIKE ?"
-                params.append(f'%"{et}"%')
+        for et in exclude_tags or ():
+            conditions += " AND tags NOT LIKE ?"  # parenthesised above so AND applies to the whole OR group
+            params.append(f'%"{et}"%')
         rows = self._db.execute(
-            f"SELECT id FROM notes WHERE ({conditions}) ORDER BY created_at DESC LIMIT ?",
+            f"SELECT id FROM notes WHERE {conditions} ORDER BY created_at DESC LIMIT ?",
             params + [limit],
         ).fetchall()
         note_ids = [row[0] for row in rows]

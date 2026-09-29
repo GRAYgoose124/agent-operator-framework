@@ -30,7 +30,10 @@ class SentenceTransformerProvider:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(self._model_name)
+            try:  # cached weights load instantly and never touch the network
+                self._model = SentenceTransformer(self._model_name, local_files_only=True)
+            except Exception:
+                self._model = SentenceTransformer(self._model_name)  # first use: download
         return self._model
 
     async def embed(self, texts: list[str]) -> SpecialistResult | None:

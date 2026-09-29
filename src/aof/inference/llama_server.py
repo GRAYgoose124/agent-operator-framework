@@ -78,6 +78,9 @@ class LlamaServerBackend:
         self._log_path: Path | None = None
         self._client: LocalServerBackend | None = None
         self._base_url = ""
+        self._closed = False
+        self._restart_lock = asyncio.Lock()
+        self.restarts = 0  # times the server was found dead and relaunched
 
     def _command(self, binary: str, port: int) -> list[str]:
         s = self._server
@@ -94,6 +97,13 @@ class LlamaServerBackend:
         ]
 
     async def start(self) -> None:
+        self._closed = False
+        await self._spawn()
+
+    async def _spawn(self) -> None:
+        if self._client:  # relaunch: drop the client bound to the dead server's port
+            await self._client.shutdown()
+            self._client = None
         binary = find_llama_server(self._server.binary)
         port = _free_port(self._server.host)
         fd, log_name = tempfile.mkstemp(prefix="aof-llama-server-", suffix=".log")
@@ -160,7 +170,39 @@ class LlamaServerBackend:
             except subprocess.TimeoutExpired:
                 proc.kill()
 
+    async def _ensure_alive(self) -> None:
+        """Relaunch the server if its process has exited (crash, external kill); log why."""
+        async with self._restart_lock:
+            proc = self._proc
+            if self._closed or (proc is not None and proc.poll() is None):
+                return
+            code = proc.returncode if proc is not None else None
+            logger.warning(
+                "llama-server for %s is not running (exit code %s); restarting. Last log lines:\n%s",
+                Path(self._model_path).name, code, self._log_tail(),
+            )
+            self._kill()
+            if self._log_path:
+                self._log_path.unlink(missing_ok=True)
+            self.restarts += 1
+            await self._spawn()
+
+    async def _request(self, call):
+        """Run `call(client)`, restarting the server and retrying if it died. Timeouts are not retried."""
+        last: Exception | None = None
+        for _ in range(3):
+            await self._ensure_alive()
+            assert self._client is not None, "Call start() first"
+            try:
+                return await call(self._client)
+            except aiohttp.ClientConnectionError as e:  # refused / reset / disconnected
+                last = e
+                self._kill()  # make the next _ensure_alive relaunch even if the process still looks alive
+        assert last is not None
+        raise last
+
     async def shutdown(self) -> None:
+        self._closed = True
         if self._client:
             await self._client.shutdown()
             self._client = None
@@ -177,12 +219,12 @@ class LlamaServerBackend:
         max_tokens: int | None = None,
         stop: list[str] | None = None,
     ) -> CompletionResult:
-        assert self._client is not None, "Call start() first"
-        return await self._client.complete(messages, temperature=temperature, max_tokens=max_tokens, stop=stop)
+        return await self._request(
+            lambda c: c.complete(messages, temperature=temperature, max_tokens=max_tokens, stop=stop)
+        )
 
     async def complete_json(self, messages: list[dict[str, str]], schema: dict | None = None) -> dict:
-        assert self._client is not None, "Call start() first"
-        return await self._client.complete_json(messages, schema)
+        return await self._request(lambda c: c.complete_json(messages, schema))
 
     def model_info(self) -> dict[str, Any]:
         return {

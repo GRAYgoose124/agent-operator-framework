@@ -158,6 +158,10 @@ def main() -> None:
         help="Backend: deep (Deep Agents) or legacy (sequential pipeline)",
     )
 
+    from aof.refine.cli import add_refine_parser
+
+    add_refine_parser(subparsers, common)
+
     # aof researcher run [--workspace NAME] [--pipeline PATH] ...
     researcher_p = subparsers.add_parser(
         "researcher",
@@ -314,6 +318,10 @@ async def _dispatch(args: argparse.Namespace, config: AppConfig) -> None:
         await _run_discovery(args, config)
     elif args.command == "researcher":
         await _run_researcher(args, config)
+    elif args.command == "refine":
+        from aof.refine.cli import run_refine_command
+
+        await run_refine_command(args, config)
 
 
 async def _make_backend(args: argparse.Namespace, config: AppConfig, model_path_override: str | None = None):

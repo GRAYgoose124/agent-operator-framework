@@ -124,6 +124,74 @@ must be **scaffolded by the framework, not left to model initiative**:
 3. New evidence becomes a cited source on the note (`add_citation` must therefore work in refine context, not
    only during `research run`).
 
+## Evidence-first pipeline (`aof refine`)
+
+**Why not agent loops.** A baseline run of the existing SOTA pipeline on three neuro questions (0.6B gather agent,
+LFM2.5 synthesise/store) lost the evidence before refinement could start: the gather agent ran one web search,
+summarised *dictionary definitions* of "intrinsic circuit", never fetched a page, and the final artifact for a full
+circuit question read "The findings from the search are stored as per the context... feel free to ask!". Tiny models
+cannot be trusted with open-ended tool loops, so the framework owns the loop and models only do narrow jobs.
+
+**Stages** (`src/aof/refine/`):
+
+1. **Plan** queries: the question, a keyword form, and model-written sub-queries (`generate`).
+2. **Gather** documents from pluggable sources (`sources.py`): PubMed, OpenAlex (peer-reviewed abstracts), Wikipedia,
+   web fallback. Each carries an `authority` level; copies of one work are merged by DOI/title (`doc_key`), because the
+   same paper arriving via PubMed *and* OpenAlex once produced false "independent corroboration".
+3. **Extract** claims *extractively*: sentences are lifted verbatim, ranked by relevance to the question, and
+   filtered (methods, questions, fragments, statements about the paper itself). A claim is grounded by construction.
+4. **Cluster** near-duplicates (embeddings; token overlap fallback) and pick a canonical member by authority, abstract
+   section, relevance.
+5. **Decontextualise** claims that lean on context ("In turn, ..."): a small model rewrites, a judge must find the
+   rewrite *supported by its own quote*, else the verbatim sentence stays. The quote is always kept as evidence.
+6. **Store** one atomic claim note per cluster (`kind=claim`, `status=refined|canonical`, provenance list), archiving
+   every other member with `superseded_by` (lossless: nothing is deleted).
+7. **Curate** (optional): grade `core | supporting | irrelevant`; irrelevant claims are archived (kept, tagged
+   `off-topic`). A negative from the cheap model is **confirmed by the large model** before archiving.
+8. **Verify** (optional): look the claim up in *other* works; cheap judge first, a "contradicted" is confirmed by the
+   large model before anything is flagged. Corroboration adds cited sources and promotes the note to `canonical`.
+9. **Structure**: mutual links (semantic proximity + shared *specific* entities), extractive hub notes (only the title is
+   model-written, and must reuse member vocabulary).
+10. **Measure / export / assess**: vault metrics; Obsidian-style export; rubric coverage against a question set.
+
+```bash
+uv run aof refine --log-level WARNING run --workspace neuro \
+    --queue-file examples/queues/neuro_hippocampal_thalamic.toml --curate --verify-top 4
+uv run aof refine structure --workspace neuro
+uv run aof refine metrics   --workspace neuro
+uv run aof refine assess    --workspace neuro --queue-file examples/queues/neuro_hippocampal_thalamic.toml
+uv run aof refine export    --workspace neuro          # -> data/workspaces/neuro/export/ (Obsidian-ready)
+```
+
+## Measured findings (12 GB RTX 4080 laptop, real models, real sentences)
+
+**Topic classification** of 64 abstract sentences (reference = topic of the query that retrieved them; noisy but
+identical for every provider):
+
+| Provider | Coverage | Precision on accepted | Time (64 calls) |
+|----------|----------|-----------------------|-----------------|
+| needle:3 | 12% | 75% | 13.5 s |
+| needle:2 | 33% | 71% | 10.5 s |
+| role:fast (LFM2.5-1.2B) via llama-cpp-python | 3% (fails JSON) | 100% (n=2) | 2 s |
+| role:small (Qwen3-4B) via llama-cpp-python (CPU) | 100% | 75% | 82 s |
+| role:small (Qwen3-4B) via **llama-server (GPU)** | 100% | 78% | **12.7 s** |
+| role:fast (LFM2.5-1.2B) via llama-server (GPU) | 100% | 62% | 6.3 s |
+| role:large (Qwythos-9B) via llama-server (GPU) | 100% | 80% | 26 s |
+
+Conclusions that shaped the defaults:
+- The bundled `llama-cpp-python` wheel here is **CPU-only** (`llama_supports_gpu_offload() == False`), so every Qwen/LFM
+  role ran on CPU while the GPU idled. Serving roles through `llama-server` (CUDA) made the 4B 6.5x faster and made the
+  1.2B usable (JSON constraint works there). Route roles you use often through `[llama_server] roles`.
+- Needle is not a general topic classifier: it abstains on most abstract-label calls and, when it answers, is no more
+  precise than the 4B. Cheap-first still costs nothing in accuracy, but its real value is tool routing and fielded
+  extraction. The 9B is only slightly more precise than the 4B on this task, so it is reserved for confirming negatives
+  and for judging, not for bulk labelling.
+- Curation with the 4B alone rejected 36 of 66 claims as irrelevant, including clear TRN anatomy ("Electrical
+  synapses between TRN neurons were absent in Cx36-null mice"). Confirming every negative with the 9B cut rejects to
+  11 of 57, all genuinely off-topic. A false reject hides knowledge, so negatives always get the strongest judge.
+- Long-running work must survive a dead model server: `LlamaServerBackend` relaunches a dead `llama-server` and retries
+  connection failures (after one crashed mid-run with no error in its log).
+
 ## Phases
 
 | # | Phase | Status |
@@ -132,9 +200,9 @@ must be **scaffolded by the framework, not left to model initiative**:
 | 1 | `llama_server` backend + thinking control + docs (`docs/llama-cpp.md`) | done (verified with a real 9B) |
 | 1b | Qwen3.5-family support: `<function=...>` tool-call parsing, lone `</think>` split, sampling floor/overrides | done |
 | 2 | Specialist registry (capability → provider chain), Needle 3/2 adapter, role providers (LFM2 Nanos, Qwen, llama-server) | done |
-| 3 | Atomic notes + provenance schema; refine passes (extract, dedupe, merge/split, verify) | planned |
-| 4 | Link proposals + hub/structure notes | planned |
-| 5 | Vault metrics + markdown export; before/after evaluation on a real seeded workspace | planned |
+| 3 | Atomic notes + provenance schema; refine passes (extract, dedupe, merge, curate, verify) | done |
+| 4 | Link proposals + hub/structure notes | done |
+| 5 | Vault metrics + markdown export + rubric assessment (`aof refine assess`) | done; before/after evaluation in progress |
 
 ## Verified so far
 

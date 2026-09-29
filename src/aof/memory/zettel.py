@@ -105,7 +105,7 @@ class ZettelNote:
         tags = [t.strip() for t in tags_inner.split(",") if t.strip()]
 
         # Parse links from body: - [[id]]
-        links: list[str] = re.findall(r"\[\[([^\]]+)\]\]", body)
+        links: list[str] = list(dict.fromkeys(re.findall(r"\[\[([^\]]+)\]\]", body)))  # body + ## Links repeat ids
 
         sources = _section_items(body, "Provenance")
         supersedes = _section_items(body, "Merged from")

@@ -144,3 +144,33 @@ async def test_real_model_thinking_is_separated_from_answer():
     assert "zettelkasten" in parsed.text.lower()
     assert "</think>" not in parsed.text
     assert len(parsed.text) < 600
+
+
+def test_per_role_overrides_apply_only_to_that_role(tmp_path):
+    (tmp_path / "c.toml").write_text(
+        '[llama_server]\nroles = ["small", "large"]\nn_gpu_layers = 50\n'
+        '[llama_server.per_role.large]\nmin_temperature = 0.6\ntop_k = 20\nextra_args = ["--flash-attn", "on"]\nbogus = 1\n'
+    )
+    cfg = load_config(tmp_path / "c.toml").llama_server
+    large, small = cfg.for_role("large"), cfg.for_role("small")
+    assert (large.min_temperature, large.top_k, large.n_gpu_layers) == (0.6, 20, 50)
+    assert large.extra_args == ("--flash-attn", "on")
+    assert (small.min_temperature, small.top_k, small.n_gpu_layers) == (0.0, None, 50)
+
+
+@_REQUIRES_REAL
+async def test_real_server_is_relaunched_after_it_dies():
+    backend = LlamaServerBackend(LARGE_MODEL, LlamaServerConfig(enable_thinking=False), n_ctx=2048, max_tokens=40)
+    await backend.start()
+    try:
+        first = await backend.complete([{"role": "user", "content": "Reply with one word: the capital of France."}])
+        assert "paris" in first.text.lower()
+        old_pid = backend._proc.pid
+        backend._proc.kill()  # simulate a crash / external kill
+        backend._proc.wait()
+        second = await backend.complete([{"role": "user", "content": "Reply with one word: the capital of Japan."}])
+        assert "tokyo" in second.text.lower()
+        assert backend.restarts == 1 and backend._proc.pid != old_pid
+    finally:
+        await backend.shutdown()
+    assert backend._proc is None

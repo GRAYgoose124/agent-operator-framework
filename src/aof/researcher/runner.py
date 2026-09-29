@@ -653,7 +653,7 @@ async def _make_multi_backends(config: AppConfig, roles: set[str]):
         if role in config.llama_server.roles:
             from aof.inference.llama_server import LlamaServerBackend
 
-            backend = LlamaServerBackend(path, config.llama_server, n_ctx=role_n_ctx)
+            backend = LlamaServerBackend(path, config.llama_server.for_role(role), n_ctx=role_n_ctx)
         else:
             backend = LlamaBackend(replace(config.model, path=path, n_ctx=role_n_ctx), config.pool)
         await backend.start()

@@ -71,3 +71,56 @@ def lexical_overlap(a: str, b: str) -> float:
     if not ta or not tb:
         return 0.0
     return len(ta & tb) / len(ta | tb)
+
+
+_ACRONYM_RE = re.compile(r"\b(?:[A-Z]{2,6}\d{0,2}|[A-Z][a-z]{1,3}[A-Z0-9][A-Za-z0-9]*\d[\w.\-]*)\b")
+_ENTITY_STOP = frozenset({"DNA", "RNA", "USA", "EEG", "FMRI", "MRI", "PET", "WT", "KO", "SD", "SEM", "II", "III", "IV"})
+
+
+def extract_entities(text: str, limit: int = 5) -> list[str]:
+    """Acronyms and gene/channel style identifiers (TRN, GABA, CA1, Cav3.1, KCC2), in order of appearance.
+
+    Deterministic and cheap; used as link keys between notes. Generic words in capitals are not filtered,
+    only a small stoplist of near-universal acronyms.
+    """
+    seen: dict[str, None] = {}
+    for m in _ACRONYM_RE.finditer(text):
+        tok = m.group(0).strip(".-")
+        if tok.upper() in _ENTITY_STOP or (len(tok) < 3 and not any(c.isdigit() for c in tok)):
+            continue
+        seen.setdefault(tok, None)
+    return list(seen)[:limit]
+
+
+_CONTEXT_OPENERS = re.compile(
+    r"^(we|our|us|these|this|those|that|here|thus|therefore|hence|however|moreover|furthermore|in addition|additionally|"
+    r"in turn|in agreement|in contrast|by contrast|taken together|together|overall|notably|indeed|similarly|"
+    r"consequently|accordingly|unexpectedly|surprisingly|of particular|of note|importantly|interestingly|"
+    r"in summary|in conclusion|finally|first|second|third|also|both|such|it|they|its|their)\b",
+    re.IGNORECASE,
+)
+
+
+def needs_context(sentence: str) -> bool:
+    """True if a sentence leans on surrounding text (pronoun/discourse-marker opener) and may not stand alone."""
+    return bool(_CONTEXT_OPENERS.match(sentence.strip()))
+
+
+_META_PATTERNS = re.compile(
+    r"^(?:\[[A-Z ]+\]:\s*)?"  # structured-abstract tags like [HYPOTHESES]:
+    r"(?:"
+    r"(?:in|for) (?:this|the present|the current) (?:review|paper|article|manuscript|study|work|chapter|report)\b|"
+    r"(?:this|the present|the current) (?:review|paper|article|manuscript|chapter|report)\b|"
+    r"(?:the present|the current|this) study (?:hypothesi[sz]es|aims|sought|examines|investigates|explores|describes|reports|was designed)\b|"
+    r"here,? (?:we|i)\b|"
+    r"we (?:review|discuss|summari[sz]e|highlight|outline|describe|propose|hypothesi[sz]e|speculate|suggest that future|focus|argue|present|provide an overview)\b|"
+    r"(?:the )?(?:aim|goal|purpose|objective)s? of (?:this|the present)\b|"
+    r"(?:recent findings|purpose of review|summary|abstract|keywords?)\s*[:\-]"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def is_paper_meta(sentence: str) -> bool:
+    """True for sentences about the paper itself ("In this review we focus...") rather than about the world."""
+    return bool(_META_PATTERNS.match(sentence.strip()))

@@ -67,6 +67,21 @@ uv run aof researcher run --workspace myproject
 | `--backend llama` | Legacy Pipeline | Multi-role, per-step routing, full composability |
 | `--backend server` | OpenAI-compatible API | LM Studio, Ollama, vLLM |
 
+## Building a curated knowledge vault
+
+`aof refine` builds a vault from a question set: it gathers peer-reviewed evidence, extracts claims as verbatim
+quotes, merges duplicates losslessly, curates, verifies, links, builds hub notes, and exports Obsidian-ready markdown.
+Small models do narrow jobs; the framework owns the loop. See [docs/VAULT_OVERHAUL.md](docs/VAULT_OVERHAUL.md).
+
+```bash
+uv run aof refine --log-level WARNING run --workspace neuro \
+    --queue-file examples/queues/neuro_hippocampal_thalamic.toml --curate --verify-top 4
+uv run aof refine structure --workspace neuro   # links + hub notes
+uv run aof refine metrics   --workspace neuro   # duplicates, orphans, sourcing, verification
+uv run aof refine assess    --workspace neuro --queue-file examples/queues/neuro_hippocampal_thalamic.toml
+uv run aof refine export    --workspace neuro   # data/workspaces/neuro/export/
+```
+
 ## Specialist models
 
 Small task-specific models (Needle, Liquid Nanos, any configured role) are exposed as *capabilities* with cheap-first

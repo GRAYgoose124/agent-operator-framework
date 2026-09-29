@@ -14,8 +14,9 @@ ANNOTATE = "annotate"  # text + tool-shaped schema -> dict of fields
 CLASSIFY = "classify"  # text + labels -> label
 EMBED = "embed"  # texts -> vectors
 JUDGE = "judge"  # claim + evidence -> verdict dict
+GENERATE = "generate"  # system + user prompt -> free text (query planning, rewriting)
 
-CAPABILITIES = (ANNOTATE, CLASSIFY, EMBED, JUDGE)
+CAPABILITIES = (ANNOTATE, CLASSIFY, EMBED, JUDGE, GENERATE)
 
 VERDICTS = ("supported", "contradicted", "unsupported", "needs_lookup")
 

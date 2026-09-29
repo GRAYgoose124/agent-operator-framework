@@ -16,6 +16,7 @@ from aof.config import AppConfig, resolve_role_path
 from aof.specialists.base import (
     ANNOTATE,
     CLASSIFY,
+    GENERATE,
     JUDGE,
     VERDICTS,
     SpecialistResult,
@@ -56,7 +57,7 @@ def _fields_prompt(schema: dict) -> str:
 class RoleProvider:
     """Wraps one configured model role."""
 
-    capabilities = (ANNOTATE, CLASSIFY, JUDGE)
+    capabilities = (ANNOTATE, CLASSIFY, JUDGE, GENERATE)
 
     def __init__(self, role: str, config: AppConfig, get_backend: BackendGetter) -> None:
         self.role = role
@@ -113,6 +114,21 @@ class RoleProvider:
         if data is None or not validate_fields(_JUDGE_SCHEMA, data):
             return None
         return SpecialistResult(data, self.name)
+
+    async def generate(self, system: str, user: str, *, max_tokens: int = 400) -> SpecialistResult | None:
+        from aof.inference.parsing import parse_response
+
+        backend = await self._get_backend(self.role)
+        try:
+            result = await backend.complete(
+                [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                temperature=0.3, max_tokens=max_tokens,
+            )
+        except Exception as e:
+            logger.warning("%s generate failed (%s: %s); escalating", self.name, type(e).__name__, str(e)[:120])
+            return None
+        text = parse_response(result.text).text.strip()
+        return SpecialistResult(text, self.name) if text else None
 
     async def close(self) -> None:
         return None

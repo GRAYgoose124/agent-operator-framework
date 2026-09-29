@@ -5,6 +5,7 @@ from aof.specialists.base import (
     CAPABILITIES,
     CLASSIFY,
     EMBED,
+    GENERATE,
     JUDGE,
     VERDICTS,
     Provider,
@@ -15,7 +16,7 @@ from aof.specialists.base import (
 from aof.specialists.registry import ProviderStats, SpecialistRegistry, build_registry
 
 __all__ = [
-    "ANNOTATE", "CAPABILITIES", "CLASSIFY", "EMBED", "JUDGE", "VERDICTS",
+    "ANNOTATE", "CAPABILITIES", "CLASSIFY", "EMBED", "GENERATE", "JUDGE", "VERDICTS",
     "Provider", "ProviderStats", "SpecialistError", "SpecialistExhausted", "SpecialistRegistry",
     "SpecialistResult", "build_registry",
 ]

@@ -140,15 +140,26 @@ class LlamaServerConfig:
     repeat_penalty: float | None = None
     min_temperature: float = 0.0
     roles: tuple[str, ...] = ()  # roles served through llama-server instead of llama-cpp-python
+    # Per-role overrides of any field above, e.g. [llama_server.per_role.large] min_temperature = 0.6
+    per_role: dict[str, dict] = field(default_factory=dict)
+
+    def for_role(self, role: str) -> "LlamaServerConfig":
+        """This config with the role's overrides applied (unknown keys are ignored)."""
+        overrides = {k: v for k, v in self.per_role.get(role, {}).items() if k in LlamaServerConfig.__dataclass_fields__}
+        for k, v in overrides.items():
+            if isinstance(v, list):
+                overrides[k] = tuple(v)
+        return replace(self, **overrides)
 
 
 # Default provider chains, cheapest first. Provider specs: "needle:<generation>", "role:<role>",
 # "sentence-transformers". Unavailable providers (package or model file missing) are skipped.
 DEFAULT_SPECIALIST_CHAINS: dict[str, tuple[str, ...]] = {
-    "annotate": ("needle:3", "needle:2", "role:lfm2_extract", "role:fast", "role:small"),
-    "classify": ("needle:3", "needle:2", "role:fast", "role:small"),
+    "annotate": ("needle:3", "needle:2", "role:lfm2_extract", "role:small"),
+    "classify": ("needle:3", "needle:2", "role:small", "role:large"),
     "embed": ("sentence-transformers",),
     "judge": ("role:small", "role:large"),
+    "generate": ("role:small", "role:large"),
 }
 
 

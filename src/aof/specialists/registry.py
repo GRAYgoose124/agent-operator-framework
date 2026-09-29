@@ -38,9 +38,14 @@ class SpecialistRegistry:
             if callable(getattr(p, capability, None)) and p.available()
         ]
 
-    async def call(self, capability: str, *args: Any, **kwargs: Any) -> SpecialistResult:
-        """Try each provider in order; return the first non-abstaining result."""
+    async def call(self, capability: str, *args: Any, only: str | None = None, **kwargs: Any) -> SpecialistResult:
+        """Try each provider in order; return the first non-abstaining result.
+
+        `only` restricts the call to one named provider (e.g. "role:large") to escalate directly.
+        """
         providers = self.providers_for(capability)
+        if only is not None:
+            providers = [p for p in providers if p.name == only]
         if not providers:
             raise SpecialistExhausted(f"no available provider for capability {capability!r}")
         tried: list[str] = []

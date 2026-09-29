@@ -54,6 +54,25 @@ for judgement-heavy steps (verify, reconcile, structure); prefer small models el
 
 Per-role context comes from `[role_context]` (e.g. `large = 8192`).
 
+## Use it for GPU speed, not only for new architectures
+
+Check whether your `llama-cpp-python` wheel can offload to the GPU:
+
+```bash
+uv run python -c "import llama_cpp; print(llama_cpp.llama_supports_gpu_offload())"
+```
+
+If that prints `False` (the default PyPI wheel is CPU-only), every role loaded in-process runs on CPU. Routing
+frequently used roles through a CUDA `llama-server` was 6.5x faster for a 4B model in testing:
+
+```toml
+[llama_server]
+roles = ["micro", "small", "fast", "large"]
+```
+
+Each listed role gets its own server on a free port (mind VRAM: a 9B Q4 is ~5.6 GB, a 4B Q4 ~2.7 GB). A dead server is
+relaunched automatically, and connection failures are retried.
+
 ## Recommended settings for reasoning models (e.g. Qwythos-9B / Qwen3.5-family)
 
 The model card recommends `temperature 0.6, top_p 0.95, top_k 20, repeat_penalty 1.05` and warns that greedy
@@ -62,6 +81,9 @@ or `T <= 0.3` can cause repetition loops. Set them on the server role so callers
 ```toml
 [llama_server]
 enable_thinking = false      # cheap steps; use thinking for the final judgement pass
+
+# Sampling advice is per model: apply it only to the reasoning role, not to small classifier roles.
+[llama_server.per_role.large]
 top_p = 0.95
 top_k = 20
 repeat_penalty = 1.05
