@@ -18,6 +18,8 @@
 
 ## In Progress
 
+- [ ] Knowledge-vault overhaul: see `docs/VAULT_OVERHAUL.md` (llama-server backend, specialist registry incl. Needle 3/2 + LFM2 Nanos, atomic notes + provenance, refine passes, vault export + metrics).
+
 ## Planned
 
 ## Ongoing
