@@ -68,6 +68,26 @@ Provider kinds: `needle:<generation>`, `role:<role>` (existing GGUF/server roles
 `ZettelNote` gains `status` (`raw | refined | canonical | archived`), `sources` (citation ids/urls),
 `claim_ids`, `supersedes` / `superseded_by`, and `confidence`. Archival keeps the original file and links it.
 
+## Model hierarchy (cheapest tier that can do the job)
+
+Work is routed up a ladder and only escalates when a tier is unsure. Each specialist returns a confidence
+(Needle reports a calibrated one; others use schema validity, self-agreement, or a verifier).
+
+| Tier | What | Used for |
+|------|------|----------|
+| 0 | No model: hashes, FTS5, shingle/MinHash, link-graph metrics | exact/near-duplicate detection, orphan and link stats, ID/citation bookkeeping |
+| 1 | Needle 3 (2 as fallback), 8-29 MB, CPU, hundreds of tok/s | tool-call routing, claim/record extraction into typed fields, enum classification (topic, note status), embeddings for dedupe and link candidates |
+| 2 | Liquid Nanos / LFM2.5, 0.35-2.6B | `lfm2_extract` (documents to structure), `lfm2_rag` (is this claim supported by these sources?), `lfm2_tool`, `lfm2_math`, `lfm2_transcript`, LFM2.5 instruct for rewrites |
+| 3 | Qwen3 0.6-4B | gather agents; drafting merges and splits; writing link rationales |
+| 4 | 9B-class `large` via llama-server | only escalations: contradictions, hub/structure notes, final audit of merged notes |
+
+Rules of thumb:
+- **Verify cheaply, generate rarely.** Checking a claim against its source is much easier than producing text, so
+  support checks run wide on tier 1-2. Only disagreements escalate.
+- **Cascade on confidence.** Cheap tier first; escalate on low confidence, failed schema, or two cheap tiers disagreeing.
+- **Scale out, not up.** Many parallel small workers beat one large model for extraction/dedupe/verification.
+- **Track it.** Per-tier calls, tokens and escalation rate are vault metrics; the target is to keep tier 4 a small fraction.
+
 ## Phases
 
 | # | Phase | Status |
