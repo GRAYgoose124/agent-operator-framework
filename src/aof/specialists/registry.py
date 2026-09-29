@@ -114,7 +114,7 @@ def build_registry(config: AppConfig, get_backend) -> SpecialistRegistry:
             elif kind == "role":
                 cache[spec] = RoleProvider(arg, config, get_backend)
             elif kind == "sentence-transformers":
-                cache[spec] = SentenceTransformerProvider(arg or "all-MiniLM-L6-v2")
+                cache[spec] = SentenceTransformerProvider(arg or "all-MiniLM-L6-v2", config.specialists.embed_device)
             else:
                 raise ValueError(f"unknown specialist provider spec {spec!r}")
         return cache[spec]

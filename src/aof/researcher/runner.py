@@ -633,11 +633,18 @@ async def _make_services(config: AppConfig):
     return memory, tools, git_ops
 
 
-async def _make_multi_backends(config: AppConfig, roles: set[str]):
-    """Build backends for each role, applying per-role n_ctx overrides."""
+async def _make_multi_backends(config: AppConfig, roles: set[str], plan=None, lazy_roles: frozenset[str] = frozenset()):
+    """Build backends for each role, applying per-role n_ctx overrides and the VRAM plan's GPU layers.
+
+    `lazy_roles` (llama-server roles only) are created parked: the residency manager wakes them on first use.
+    """
     from dataclasses import replace
 
     from aof.inference.llama_backend import LlamaBackend
+    from aof.inference.vram import apply_plan, plan_vram
+
+    if plan is None and any(r in config.llama_server.roles for r in roles):
+        plan = plan_vram(config)
 
     path_to_backend: dict[str, object] = {}
     backends: dict[str, object] = {}
@@ -653,10 +660,13 @@ async def _make_multi_backends(config: AppConfig, roles: set[str]):
         if role in config.llama_server.roles:
             from aof.inference.llama_server import LlamaServerBackend
 
-            backend = LlamaServerBackend(path, config.llama_server.for_role(role), n_ctx=role_n_ctx)
+            backend = LlamaServerBackend(path, apply_plan(config, role, plan), n_ctx=role_n_ctx)
+            if role in lazy_roles:
+                backend.parked = True
         else:
             backend = LlamaBackend(replace(config.model, path=path, n_ctx=role_n_ctx), config.pool)
-        await backend.start()
+        if not getattr(backend, "parked", False):
+            await backend.start()
         logger.info("Model role=%s path=%s n_ctx=%d", role, path, role_n_ctx)
         path_to_backend[cache_key] = backend
         backends[role] = backend

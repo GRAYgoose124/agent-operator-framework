@@ -73,6 +73,56 @@ roles = ["micro", "small", "fast", "large"]
 Each listed role gets its own server on a free port (mind VRAM: a 9B Q4 is ~5.6 GB, a 4B Q4 ~2.7 GB). A dead server is
 relaunched automatically, and connection failures are retried.
 
+## Composing models by VRAM, and swapping through system memory
+
+`n_gpu_layers = -1` (the default) lets AOF plan GPU layers from a VRAM budget. Give each role a `vram_share` (its weight)
+and a `residency`, and the budget is split by ratio:
+
+```toml
+[vram]
+reserve_mb = 1024          # kept free for the desktop; or set budget_mb explicitly
+# use_free = true          # budget from currently free VRAM (handy when something else uses the GPU)
+park = "unload"            # what parking does: "unload" or "cpu" (keep answering from system memory, slowly)
+idle_park_seconds = 0      # >0 also parks swap roles that sat idle this long
+
+[llama_server]
+roles = ["small", "large"]
+
+[llama_server.per_role.small]
+vram_share = 1             # 1 : 2 -> `large` gets twice the GPU share of `small`
+[llama_server.per_role.large]
+vram_share = 2
+residency = "swap"         # loaded on demand; parked when another swap role needs the pool
+```
+
+* `pinned` roles stay loaded. A role that needs less than its share gives the rest back to the others.
+* `swap` roles take turns in one pool, sized like the largest swap share. Using one parks the least recently used
+  (after its in-flight requests finish). Parked weights stay in the OS file cache, so waking is a reload from system
+  memory, not from disk. Keep roles that a stage uses together in one pool that fits them both, or they will thrash.
+* A role whose allotment is smaller than its model keeps the remaining layers on the CPU (partial `-ngl`).
+* `aof refine` commands announce the roles they use up front (`--judge-with role:large`, ...), so a swap role is
+  loaded once per phase instead of once per call.
+* Run `aof vram` to see the detected budget and the layers planned for each role. Sizes come from each GGUF's header
+  (weights = file size, KV cache from the attention geometry), so an estimate can be a few hundred MB off.
+
+Needle (2 and 3) is a native CPU engine and never uses VRAM. The sentence-transformers embedder also runs on the CPU by
+default (`[specialists] embed_device = "cpu"`; use `"cuda"` or `""` to change it).
+
+## Qwen3.5 small models
+
+Qwen3.5 (hybrid attention) needs an upstream llama.cpp build, so serve it through `llama-server`. `qwen35_4b` and
+`qwen35_0_8b` are ready-made roles; point them at your GGUFs and use them in the chains:
+
+```toml
+# config.local.toml
+[roles]
+qwen35_4b = "path/to/Qwen3.5-4B-Q4_K_M.gguf"
+[llama_server]
+roles = ["qwen35_4b", "large"]
+[specialists.judge]
+providers = ["role:qwen35_4b", "role:large"]
+```
+
 ## Recommended settings for reasoning models (e.g. Qwythos-9B / Qwen3.5-family)
 
 The model card recommends `temperature 0.6, top_p 0.95, top_k 20, repeat_penalty 1.05` and warns that greedy

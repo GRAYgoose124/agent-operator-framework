@@ -128,7 +128,7 @@ class LlamaServerConfig:
     """
     binary: str = ""
     host: str = "127.0.0.1"
-    n_gpu_layers: int = 99
+    n_gpu_layers: int = -1  # -1 = plan from the VRAM budget ([vram], vram_share, residency); >= 0 forces a value
     n_parallel: int = 1
     startup_timeout: int = 300
     request_timeout: int = 180  # seconds; requests here take seconds, so a longer wait means a hung server
@@ -144,6 +144,10 @@ class LlamaServerConfig:
     repeat_penalty: float | None = None
     min_temperature: float = 0.0
     roles: tuple[str, ...] = ()  # roles served through llama-server instead of llama-cpp-python
+    # VRAM composition (see docs/llama-cpp.md): `vram_share` is this role's weight when the budget is split;
+    # `residency` = "pinned" (stay loaded) or "swap" (loaded on demand, parked when another swap role needs the pool).
+    vram_share: float = 1.0
+    residency: str = "pinned"
     # Per-role overrides of any field above, e.g. [llama_server.per_role.large] min_temperature = 0.6
     per_role: dict[str, dict] = field(default_factory=dict)
 
@@ -169,8 +173,19 @@ DEFAULT_SPECIALIST_CHAINS: dict[str, tuple[str, ...]] = {
 
 @dataclass(frozen=True)
 class SpecialistsConfig:
-    """Capability -> ordered provider chain (see docs/VAULT_OVERHAUL.md)."""
+    """Capability -> ordered provider chain."""
     chains: dict[str, tuple[str, ...]] = field(default_factory=lambda: dict(DEFAULT_SPECIALIST_CHAINS))
+    embed_device: str = "cpu"  # sentence-transformers device; cpu keeps VRAM for the language models (Needle is CPU-only)
+
+
+@dataclass(frozen=True)
+class VramConfig:
+    """GPU memory budget shared by the llama-server roles (see aof.inference.vram)."""
+    budget_mb: int = 0  # 0 = detect: total (or free, with use_free) minus reserve_mb
+    reserve_mb: int = 1024  # left for the desktop, display and other processes
+    use_free: bool = False  # budget from currently free VRAM instead of total (e.g. when gaming alongside)
+    park: str = "unload"  # what parking a swap role does: "unload" (frees RAM too) or "cpu" (keeps it warm on the CPU)
+    idle_park_seconds: int = 0  # park swap roles unused for this long (0 = only park when another role needs the room)
 
 
 @dataclass(frozen=True)
@@ -190,6 +205,9 @@ class RolesConfig:
     micro: str = "Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf"
     small: str = "Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
     medium: str = "Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf"
+    # Qwen3.5 (hybrid attention; needs an upstream llama.cpp build, so serve it via [llama_server] roles)
+    qwen35_4b: str = "Qwen3.5-4B-GGUF/Qwen3.5-4B-Q4_K_M.gguf"
+    qwen35_0_8b: str = "Qwen3.5-0.8B-GGUF/Qwen3.5-0.8B-Q4_K_M.gguf"
     vision: str = "Qwen3-VL-8B-Instruct-GGUF/Qwen3-VL-8B-Instruct-Q4_K_M.gguf"
     # LiquidAI LFM2.5 — efficient hybrid conv+attn, 32K ctx, great for agentic/RAG
     fast: str = "LFM2.5-1.2B-Instruct-GGUF/LFM2.5-1.2B-Instruct-Q8_0.gguf"
@@ -223,6 +241,8 @@ class RoleContextConfig:
     micro: int = 4096
     small: int = 8192
     medium: int = 16384
+    qwen35_4b: int = 8192
+    qwen35_0_8b: int = 8192
     vision: int = 8192
     fast: int = 8192
     reasoning: int = 8192
@@ -257,6 +277,7 @@ class AppConfig:
     evaluator: EvaluatorConfig = field(default_factory=EvaluatorConfig)
     local_server: LocalServerConfig = field(default_factory=LocalServerConfig)
     llama_server: LlamaServerConfig = field(default_factory=LlamaServerConfig)
+    vram: VramConfig = field(default_factory=VramConfig)
     specialists: SpecialistsConfig = field(default_factory=SpecialistsConfig)
     models: ModelsConfig = field(default_factory=ModelsConfig)
     roles: RolesConfig = field(default_factory=RolesConfig)
@@ -345,7 +366,7 @@ def _make_specialists(data: dict) -> SpecialistsConfig:
         providers = section.get("providers") if isinstance(section, dict) else None
         if providers:
             chains[capability] = tuple(providers)
-    return SpecialistsConfig(chains=chains)
+    return SpecialistsConfig(chains=chains, embed_device=str(data.get("embed_device", "cpu")))
 
 
 def load_config(path: Path | str | None = None) -> AppConfig:
@@ -373,6 +394,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         evaluator=_make_config(EvaluatorConfig, raw.get("evaluator", {})),
         local_server=_make_config(LocalServerConfig, raw.get("local_server", {})),
         llama_server=_make_config(LlamaServerConfig, raw.get("llama_server", {})),
+        vram=_make_config(VramConfig, raw.get("vram", {})),
         specialists=_make_specialists(raw.get("specialists", {})),
         models=_make_config(ModelsConfig, raw.get("models", {})),
         roles=_make_config(RolesConfig, raw.get("roles", {})),

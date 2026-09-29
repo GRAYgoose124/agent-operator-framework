@@ -13,9 +13,10 @@ logger = logging.getLogger(__name__)
 class SentenceTransformerProvider:
     capabilities = (EMBED,)
 
-    def __init__(self, model: str = "all-MiniLM-L6-v2") -> None:
+    def __init__(self, model: str = "all-MiniLM-L6-v2", device: str = "cpu") -> None:
         self.name = "sentence-transformers"
         self._model_name = model
+        self._device = device or None  # None lets sentence-transformers pick (CUDA when present)
         self._model = None
         self._lock = asyncio.Lock()
 
@@ -31,9 +32,9 @@ class SentenceTransformerProvider:
             from sentence_transformers import SentenceTransformer
 
             try:  # cached weights load instantly and never touch the network
-                self._model = SentenceTransformer(self._model_name, local_files_only=True)
+                self._model = SentenceTransformer(self._model_name, device=self._device, local_files_only=True)
             except Exception:
-                self._model = SentenceTransformer(self._model_name)  # first use: download
+                self._model = SentenceTransformer(self._model_name, device=self._device)  # first use: download
         return self._model
 
     async def embed(self, texts: list[str]) -> SpecialistResult | None:

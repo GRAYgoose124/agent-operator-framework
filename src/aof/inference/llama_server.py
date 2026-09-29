@@ -81,6 +81,8 @@ class LlamaServerBackend:
         self._base_url = ""
         self._closed = False
         self._restart_lock = asyncio.Lock()
+        self.gpu_layers_override: int | None = None  # set while parked on the CPU
+        self.parked = False  # deliberately unloaded (or CPU-parked) by the residency manager, not crashed
         self.restarts = 0  # times the server was found dead or hung and relaunched
         self.last_exit_code: int | None = None  # exit code of the most recent server process that ended
 
@@ -90,7 +92,7 @@ class LlamaServerBackend:
             binary,
             "-m", self._model_path,
             "-c", str(self._n_ctx * max(1, s.n_parallel)),  # llama-server splits -c across slots
-            "-ngl", str(s.n_gpu_layers),
+            "-ngl", str(self._gpu_layers()),
             "-np", str(max(1, s.n_parallel)),
             "--host", s.host,
             "--port", str(port),
@@ -99,9 +101,45 @@ class LlamaServerBackend:
             *s.extra_args,  # later flags win, so extra_args can override the lean defaults
         ]
 
+    def _gpu_layers(self) -> int:
+        if self.gpu_layers_override is not None:
+            return self.gpu_layers_override
+        return self._server.n_gpu_layers if self._server.n_gpu_layers >= 0 else 99
+
+    @property
+    def resident(self) -> bool:
+        """True when the server is up with its full GPU allotment (not parked, not unloaded)."""
+        return not self.parked and self._proc is not None and self._proc.poll() is None
+
     async def start(self) -> None:
         self._closed = False
+        self.parked = False
         await self._spawn()
+
+    async def park(self, mode: str = "unload") -> None:
+        """Free this model's VRAM. `unload` stops the server (weights stay in the OS file cache, so waking is a
+        reload from system memory); `cpu` relaunches it with no GPU layers so it keeps answering, slowly."""
+        async with self._restart_lock:
+            if self._closed:
+                return
+            self.parked = True
+            if self._client:
+                await self._client.shutdown()
+                self._client = None
+            self._kill()
+            if mode == "cpu":
+                self.gpu_layers_override = 0
+                await self._spawn()
+
+    async def wake(self) -> None:
+        """Bring a parked model back with its planned GPU allotment."""
+        async with self._restart_lock:
+            if self._closed or self.resident:
+                return
+            self._kill()
+            self.gpu_layers_override = None
+            self.parked = False
+            await self._spawn()
 
     async def _spawn(self) -> None:
         if self._client:  # relaunch: drop the client bound to the dead server's port
@@ -186,6 +224,11 @@ class LlamaServerBackend:
         async with self._restart_lock:
             proc = self._proc
             if self._closed or (proc is not None and proc.poll() is None):
+                return
+            if self.parked:  # parked on purpose: a request means the manager is bypassed, so just wake it
+                self.parked = False
+                self.gpu_layers_override = None
+                await self._spawn()
                 return
             code = proc.returncode if proc is not None else self.last_exit_code
             logger.warning(

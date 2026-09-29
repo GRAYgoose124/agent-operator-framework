@@ -1,6 +1,6 @@
 """Needle (cactus-needle) provider: tiny native model for fielded extraction and classification.
 
-Notes from measurement (see docs/VAULT_OVERHAUL.md):
+Notes from measurement:
   * Extraction is *span-level*: use it for fields (subject, topic, entities), not for writing claims.
   * The engine withholds calls it is unsure about (`suppressed_calls`); we treat that as abstaining.
   * Confidence scales differ per generation, so no numeric threshold is applied.

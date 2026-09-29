@@ -62,6 +62,9 @@ def main() -> None:
         help="Pipeline backend: deep (Deep Agents) or legacy (sequential agents)",
     )
 
+    # aof vram
+    subparsers.add_parser("vram", help="Show the VRAM budget and the GPU layers planned for each llama-server role", parents=[common])
+
     # aof canary [--model-path PATH]
     canary_p = subparsers.add_parser("canary", help="Run model capability checks", parents=[common])
     canary_p.add_argument("--backend", choices=["llama", "server"], default="llama")
@@ -308,6 +311,10 @@ async def _dispatch(args: argparse.Namespace, config: AppConfig) -> None:
         await _run_pipeline(args, config)
     elif args.command == "canary":
         await _run_canary(args, config)
+    elif args.command == "vram":
+        from aof.inference.vram import plan_vram
+
+        print(plan_vram(config).render())
     elif args.command == "memory":
         await _run_memory(args, config)
     elif args.command == "tools":
