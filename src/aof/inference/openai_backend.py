@@ -43,7 +43,7 @@ class LocalServerBackend:
                 "Authorization": f"Bearer {self._config.api_key}",
                 "Content-Type": "application/json",
             },
-            timeout=aiohttp.ClientTimeout(total=120),
+            timeout=aiohttp.ClientTimeout(total=self._config.timeout),
         )
         logger.info("OpenAI backend ready: %s (model=%s)", self._config.base_url, self._config.model)
 
@@ -70,6 +70,8 @@ class LocalServerBackend:
         }
         if stop:
             payload["stop"] = stop
+        if self._config.enable_thinking is not None:
+            payload["chat_template_kwargs"] = {"enable_thinking": self._config.enable_thinking}
 
         url = f"{self._config.base_url}/chat/completions"
 

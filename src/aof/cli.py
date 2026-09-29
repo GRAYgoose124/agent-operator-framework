@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from aof import __version__
-from aof.config import AppConfig, config_with_workspace, load_config
+from aof.config import AppConfig, config_with_workspace, load_config, resolve_role_path
 
 
 def main() -> None:
@@ -309,30 +309,6 @@ async def _dispatch(args: argparse.Namespace, config: AppConfig) -> None:
         await _run_researcher(args, config)
 
 
-def _resolve_role_path(config: AppConfig, role: str) -> str:
-    """Resolve model path for a role. Uses config.model.path for default/general."""
-    if role in ("general", "default"):
-        return config.model.path
-    role_keys = (
-        "micro", "small", "medium", "vision", "fast", "reasoning", "orchestrator", "thinker",
-        "fallback", "report_large", "analyze_large",
-        "lfm2_tool", "lfm2_rag", "lfm2_extract", "lfm2_extract_350m", "lfm2_math",
-        "lfm2_transcript", "lfm2_vl", "lfm2_jp",
-    )
-    roles_dict = {
-        k: getattr(config.roles, k)
-        for k in role_keys
-        if hasattr(config.roles, k)
-    }
-    role_path = roles_dict.get(role)
-    if not role_path:
-        return config.model.path
-    models_dir = config.models.directory
-    if models_dir:
-        return str(Path(models_dir) / role_path)
-    return role_path
-
-
 async def _make_backend(args: argparse.Namespace, config: AppConfig, model_path_override: str | None = None):
     """Create and start the appropriate inference backend."""
     backend_type = getattr(args, "backend", "llama")
@@ -370,7 +346,7 @@ async def _make_multi_backends(
     cache: dict[str, InferenceBackend] = {}
 
     for role in roles:
-        path = _resolve_role_path(config, role)
+        path = resolve_role_path(config, role)
         role_n_ctx = config.role_context.get(role, config.model.n_ctx)
         cache_key = f"{path}::{role_n_ctx}"
         if cache_key in cache:

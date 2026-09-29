@@ -39,7 +39,7 @@ pytest-asyncio is configured with `asyncio_mode = "auto"` — async test functio
 - Build backend: **hatchling** (not setuptools)
 - Source layout: `src/aof/` with `[tool.hatch.build.targets.wheel] packages = ["src/aof"]`
 - CLI entry point: `aof = "aof.cli:main"`
-- Config: `config.toml` at project root, loaded via `src/aof/config.py` into frozen dataclasses (`~` expanded in `model.path` / `models.directory`)
+- Config: `config.toml` at project root, loaded via `src/aof/config.py` into frozen dataclasses (`~` expanded in `model.path` / `models.directory`); an untracked `config.local.toml` beside it is deep-merged over it for machine-specific paths
 
 ## Architecture
 
@@ -113,6 +113,7 @@ SQLite FTS5 + markdown files in `data/memory/` (git-versioned). Strategies: sear
 |------|---------|
 | `agent/base.py` | AgentState, AgentContext, AgentMetrics, BaseAgent protocol |
 | `agent/pool.py` | Concurrent agent pool with multi-model routing |
+| `inference/llama_server.py` | Managed llama.cpp `llama-server` backend (roles in `[llama_server] roles`); see `docs/llama-cpp.md` |
 | `agent/lifecycle.py` | Single agent state machine |
 | `agent/evaluator.py` | Health scoring, canary tests |
 | `inference/llama_backend.py` | llama-cpp-python pool + thread dispatch |

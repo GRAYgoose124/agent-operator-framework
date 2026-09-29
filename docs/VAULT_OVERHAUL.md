@@ -73,7 +73,7 @@ Provider kinds: `needle:<generation>`, `role:<role>` (existing GGUF/server roles
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Repo prepared for release (single init commit on `github-release`) | done |
-| 1 | `llama_server` backend + thinking control + docs (`docs/llama-cpp.md`) | next |
+| 1 | `llama_server` backend + thinking control + docs (`docs/llama-cpp.md`) | done (verified with a real 9B) |
 | 2 | Specialist registry (capability → provider chain), Needle 3/2 adapter, LFM2 Nano roles wired in | planned |
 | 3 | Atomic notes + provenance schema; refine passes (extract, dedupe, merge/split, verify) | planned |
 | 4 | Link proposals + hub/structure notes | planned |

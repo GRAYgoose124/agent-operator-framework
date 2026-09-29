@@ -67,6 +67,11 @@ uv run aof researcher run --workspace myproject
 | `--backend llama` | Legacy Pipeline | Multi-role, per-step routing, full composability |
 | `--backend server` | OpenAI-compatible API | LM Studio, Ollama, vLLM |
 
+## Running through llama.cpp
+
+Models `llama-cpp-python` can't load (e.g. the `qwen35` architecture) can be served through a managed
+`llama-server`. See [docs/llama-cpp.md](docs/llama-cpp.md) for the llama.cpp build to install and the config.
+
 ## Configuration
 
 Edit `config.toml` to set model paths, pool sizes, memory settings, and role assignments. `~` is expanded in `model.path` and `models.directory` (default: `~/.lmstudio/models/lmstudio-community`). See `examples/` for pipeline configs.

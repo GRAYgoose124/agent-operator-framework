@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 
@@ -108,6 +108,26 @@ class LocalServerConfig:
     base_url: str = "http://localhost:1234/v1"
     api_key: str = "lm-studio"
     model: str = "qwen3-0.6b"
+    timeout: int = 300  # seconds per request
+    # None = leave the model's default; False/True sends chat_template_kwargs.enable_thinking
+    enable_thinking: bool | None = None
+
+
+@dataclass(frozen=True)
+class LlamaServerConfig:
+    """Managed llama.cpp `llama-server` (OpenAI-compatible) for models llama-cpp-python cannot load.
+
+    The binary is found via `binary`, then the AOF_LLAMA_SERVER env var, then PATH.
+    See docs/llama-cpp.md for the minimum llama.cpp build.
+    """
+    binary: str = ""
+    host: str = "127.0.0.1"
+    n_gpu_layers: int = 99
+    n_parallel: int = 1
+    startup_timeout: int = 300
+    extra_args: tuple[str, ...] = ()
+    enable_thinking: bool = False  # most agent steps want the answer, not untagged chain-of-thought
+    roles: tuple[str, ...] = ()  # roles served through llama-server instead of llama-cpp-python
 
 
 @dataclass(frozen=True)
@@ -144,6 +164,9 @@ class RolesConfig:
     lfm2_vl: str = "LFM2.5-VL-1.6B-GGUF/LFM2.5-VL-1.6B-Q4_0.gguf"
     # LFM2.5-JP (Japanese): https://huggingface.co/LiquidAI/LFM2.5-1.2B-JP-GGUF
     lfm2_jp: str = "LFM2.5-1.2B-JP-GGUF/LFM2.5-1.2B-JP-Q4_K_M.gguf"
+    # Judgement-heavy role (verify, reconcile, structure) for a larger local model; empty = unset.
+    # Typically served via [llama_server] roles = ["large"]; absolute paths are allowed.
+    large: str = ""
     # Fallback / best performance — use when health is low or explicit --role fallback
     fallback: str = "Qwen3-14B-Instruct-GGUF/Qwen3-14B-Instruct-Q4_K_M.gguf"
     # Long-context steps (same model as medium/fallback, use with role_context for larger n_ctx)
@@ -163,6 +186,7 @@ class RoleContextConfig:
     orchestrator: int = 8192
     thinker: int = 8192
     fallback: int = 16384
+    large: int = 8192
     report_large: int = 16384  # Use for report/synthesis steps to avoid context overflow
     analyze_large: int = 16384
     lfm2_tool: int = 0
@@ -189,6 +213,7 @@ class AppConfig:
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     evaluator: EvaluatorConfig = field(default_factory=EvaluatorConfig)
     local_server: LocalServerConfig = field(default_factory=LocalServerConfig)
+    llama_server: LlamaServerConfig = field(default_factory=LlamaServerConfig)
     models: ModelsConfig = field(default_factory=ModelsConfig)
     roles: RolesConfig = field(default_factory=RolesConfig)
     research: ResearchConfig = field(default_factory=ResearchConfig)
@@ -266,20 +291,7 @@ def config_with_workspace(config: AppConfig, workspace_root: Path) -> AppConfig:
         lateral_interval=config.research.lateral_interval,
         lateral_min_backlog=config.research.lateral_min_backlog,
     )
-    return AppConfig(
-        model=config.model,
-        pool=config.pool,
-        memory=memory,
-        tools=config.tools,
-        pipeline=config.pipeline,
-        evaluator=config.evaluator,
-        local_server=config.local_server,
-        models=config.models,
-        roles=config.roles,
-        research=research,
-        discovery=config.discovery,
-        role_context=config.role_context,
-    )
+    return replace(config, memory=memory, research=research)
 
 
 def load_config(path: Path | str | None = None) -> AppConfig:
@@ -287,9 +299,11 @@ def load_config(path: Path | str | None = None) -> AppConfig:
     raw: dict = {}
     if path is not None:
         p = Path(path)
-        if p.exists():
-            with open(p, "rb") as f:
-                raw = tomllib.load(f)
+        # config.toml is deep-merged with an untracked config.local.toml (machine-specific paths etc.)
+        for candidate in (p, p.with_name(f"{p.stem}.local{p.suffix}")):
+            if candidate.exists():
+                with open(candidate, "rb") as f:
+                    raw = _merge(raw, tomllib.load(f))
 
     for section, key in (("model", "path"), ("models", "directory")):
         value = raw.get(section, {}).get(key)
@@ -304,9 +318,23 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         pipeline=_make_config(PipelineConfig, raw.get("pipeline", {})),
         evaluator=_make_config(EvaluatorConfig, raw.get("evaluator", {})),
         local_server=_make_config(LocalServerConfig, raw.get("local_server", {})),
+        llama_server=_make_config(LlamaServerConfig, raw.get("llama_server", {})),
         models=_make_config(ModelsConfig, raw.get("models", {})),
         roles=_make_config(RolesConfig, raw.get("roles", {})),
         research=_make_config(ResearchConfig, raw.get("research", {})),
         discovery=_make_config(DiscoveryConfig, raw.get("discovery", {})),
         role_context=_make_config(RoleContextConfig, raw.get("role_context", {})),
     )
+
+
+def resolve_role_path(config: AppConfig, role: str) -> str:
+    """Resolve the model path for a role (absolute role paths are kept; others join models.directory)."""
+    if role in ("general", "default"):
+        return config.model.path
+    role_path = getattr(config.roles, role, "") if role in RolesConfig.__dataclass_fields__ else ""
+    if not role_path:
+        return config.model.path
+    models_dir = config.models.directory
+    if models_dir:
+        return str(Path(models_dir) / role_path)  # absolute role_path wins over models_dir
+    return str(role_path)

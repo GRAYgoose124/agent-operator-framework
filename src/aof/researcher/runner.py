@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from aof.config import AppConfig
+from aof.config import AppConfig, resolve_role_path
 from aof.researcher.artifacts import (
     append_behaviour_event,
     append_progress_step,
@@ -360,8 +360,8 @@ async def run_research_loop(
 
             roles = {config.research.director_role, config.research.expert_role, "general", "default"}
             backends = await _make_multi_backends(config, roles)
-            director_path = _resolve_role_path(config, config.research.director_role)
-            expert_path = _resolve_role_path(config, config.research.expert_role)
+            director_path = resolve_role_path(config, config.research.director_role)
+            expert_path = resolve_role_path(config, config.research.expert_role)
             logger.info(
                 "Director role=%s -> %s, expert role=%s -> %s",
                 config.research.director_role, director_path,
@@ -633,30 +633,6 @@ async def _make_services(config: AppConfig):
     return memory, tools, git_ops
 
 
-def _resolve_role_path(config: AppConfig, role: str) -> str:
-    """Resolve model path for a role."""
-    if role in ("general", "default"):
-        return config.model.path
-    role_keys = (
-        "micro", "small", "medium", "vision", "fast", "reasoning", "orchestrator", "thinker",
-        "fallback", "report_large", "analyze_large",
-        "lfm2_tool", "lfm2_rag", "lfm2_extract", "lfm2_extract_350m", "lfm2_math",
-        "lfm2_transcript", "lfm2_vl", "lfm2_jp",
-    )
-    roles_dict = {
-        k: getattr(config.roles, k)
-        for k in role_keys
-        if hasattr(config.roles, k)
-    }
-    role_path = roles_dict.get(role)
-    if not role_path:
-        return config.model.path
-    models_dir = config.models.directory
-    if models_dir:
-        return str(Path(models_dir) / role_path)
-    return str(role_path)
-
-
 async def _make_multi_backends(config: AppConfig, roles: set[str]):
     """Build backends for each role, applying per-role n_ctx overrides."""
     from dataclasses import replace
@@ -667,15 +643,19 @@ async def _make_multi_backends(config: AppConfig, roles: set[str]):
     backends: dict[str, object] = {}
 
     for role in roles:
-        path = _resolve_role_path(config, role)
+        path = resolve_role_path(config, role)
         role_n_ctx = config.role_context.get(role, config.model.n_ctx)
         # Cache key includes n_ctx so different context sizes get separate backends
         cache_key = f"{path}::{role_n_ctx}"
         if cache_key in path_to_backend:
             backends[role] = path_to_backend[cache_key]
             continue
-        model_config = replace(config.model, path=path, n_ctx=role_n_ctx)
-        backend = LlamaBackend(model_config, config.pool)
+        if role in config.llama_server.roles:
+            from aof.inference.llama_server import LlamaServerBackend
+
+            backend = LlamaServerBackend(path, config.llama_server, n_ctx=role_n_ctx)
+        else:
+            backend = LlamaBackend(replace(config.model, path=path, n_ctx=role_n_ctx), config.pool)
         await backend.start()
         logger.info("Model role=%s path=%s n_ctx=%d", role, path, role_n_ctx)
         path_to_backend[cache_key] = backend

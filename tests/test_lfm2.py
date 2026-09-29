@@ -26,7 +26,7 @@ def test_detect_model_family_qwen3():
 
 def test_resolve_role_path_lfm2_roles():
     """_resolve_role_path returns non-empty path for lfm2 roles."""
-    from aof.cli import _resolve_role_path
+    from aof.config import resolve_role_path
 
     config = load_config(None)
     lfm2_roles = (
@@ -35,7 +35,7 @@ def test_resolve_role_path_lfm2_roles():
         "orchestrator", "thinker",
     )
     for role in lfm2_roles:
-        path = _resolve_role_path(config, role)
+        path = resolve_role_path(config, role)
         assert path, f"Role {role} must resolve"
         assert "LFM2" in path or "lfm2" in path.lower()
 
@@ -56,7 +56,8 @@ def test_get_pipeline_step_roles_extracts_lfm2():
 
 def test_lfm2_full_loads_all_six_models():
     """lfm2_full.toml uses all 6 LFM2 models; each role resolves to a valid path."""
-    from aof.cli import _get_pipeline_step_roles, _resolve_role_path
+    from aof.cli import _get_pipeline_step_roles
+    from aof.config import resolve_role_path
 
     examples_dir = Path(__file__).resolve().parent.parent / "examples"
     toml_path = examples_dir / "lfm2_full.toml"
@@ -69,6 +70,6 @@ def test_lfm2_full_loads_all_six_models():
 
     config = load_config(None)
     for role in expected_roles:
-        path = _resolve_role_path(config, role)
+        path = resolve_role_path(config, role)
         assert path, f"Role {role} must resolve to a non-empty path"
         assert len(path) > 10, f"Role {role} path '{path}' looks invalid"

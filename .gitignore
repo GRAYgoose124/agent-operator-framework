@@ -46,3 +46,6 @@ htmlcov/
 
 # Vendored/cloned third-party repo (installed via `uv sync --extra agentic`)
 A-mem-sys/
+
+# Machine-specific config overrides
+config.local.toml

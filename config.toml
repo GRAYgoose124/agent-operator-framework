@@ -70,6 +70,12 @@ base_url = "http://localhost:1234/v1"
 api_key = "lm-studio"
 model = "qwen3-0.6b"
 
+# Optional: serve some roles through a managed llama.cpp `llama-server` (see docs/llama-cpp.md).
+# Machine-specific paths belong in an untracked config.local.toml.
+# [llama_server]
+# roles = ["large"]
+# enable_thinking = false
+
 # Model directory for discovering available local models
 [models]
 directory = "~/.lmstudio/models/lmstudio-community"
