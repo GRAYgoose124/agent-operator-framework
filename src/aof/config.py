@@ -1,0 +1,312 @@
+"""Configuration loading from TOML files."""
+
+from __future__ import annotations
+
+import os
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    path: str = ""
+    n_ctx: int = 2048
+    n_threads: int = 4
+    n_gpu_layers: int = 0
+    chat_format: str = "chatml"
+    temperature: float = 0.7
+    max_tokens: int = 512
+
+
+@dataclass(frozen=True)
+class PoolConfig:
+    max_agents: int = 8
+    inference_pool_size: int = 2
+    thread_pool_workers: int = 4
+
+
+@dataclass(frozen=True)
+class MemoryConfig:
+    db_path: str = "data/memory.db"
+    notes_dir: str = "data/memory"
+    auto_commit: bool = True
+    memory_strategy: str = "search"  # search | recent | agent_notes | hybrid | agentic
+    memory_search_limit: int = 5
+    vector_db_path: str = ""  # Default: {notes_dir}/chroma when hybrid
+    embedding_model: str = "all-MiniLM-L6-v2"
+    fts_preview_chars: int = 500  # Chars of note content indexed for FTS search
+    consolidation_enabled: bool = False
+    consolidation_interval: int = 600  # seconds between consolidation runs
+    consolidation_min_notes: int = 10  # minimum notes before consolidation triggers
+    # Optional A-MEM (agentic memory): LLM-generated metadata, linking, evolution
+    agentic_enabled: bool = False
+    agentic_llm_backend: str = "ollama"  # openai | ollama | openrouter | sglang
+    agentic_llm_model: str = ""  # e.g. llama2, gpt-4o-mini
+    agentic_embedding_model: str = "all-MiniLM-L6-v2"
+    agentic_api_key: str = ""  # for openai/openrouter; or set env
+
+
+@dataclass(frozen=True)
+class ToolsConfig:
+    scripts_dir: str = "data/tools"
+    crawlers_dir: str = "data/crawlers"
+    sandbox_timeout: int = 30
+    blocked_imports: tuple[str, ...] = ("os", "subprocess", "socket", "shutil", "ctypes")
+
+
+@dataclass(frozen=True)
+class PipelineConfig:
+    default_max_steps: int = 10
+    max_tool_rounds: int = 5  # Max LLM rounds per step when model returns tool calls
+
+
+@dataclass(frozen=True)
+class EvaluatorConfig:
+    check_interval_seconds: float = 5.0
+    health_threshold: float = 0.5
+    guidance_cooldown_seconds: float = 30.0
+
+
+@dataclass(frozen=True)
+class ResearchConfig:
+    """Research queue persistence path and extended mode settings."""
+    queue_path: str = "data/research_queue.json"
+    interrupt_flag_path: str = "data/research_interrupt.flag"
+    extended_mode: bool = False
+    director_role: str = "medium"
+    expert_role: str = "micro"
+    expert_count: int = 4
+    poll_seconds: int = 3
+    route_gen_enabled: bool = False
+    route_gen_interval: int = 300
+    route_gen_min_backlog: int = 2
+    parallel_items: int = 1
+    refinement_pipeline: str = ""
+    refinement_passes: int = 0
+    # Seed expansion (--seed-question): role for one-shot expansion, target count
+    seed_expansion_role: str = "medium"
+    seed_expansion_count: int = 30
+    # Branch connector: periodic synthesis note linking themes across items
+    branch_connector_enabled: bool = False
+    branch_connector_interval: int = 600
+    # Lateral thinking: proactive tangential questions into queue
+    lateral_thinking_enabled: bool = False
+    lateral_interval: int = 300
+    lateral_min_backlog: int = 5
+
+
+@dataclass(frozen=True)
+class DiscoveryConfig:
+    """Discovery queue (breadth-first web navigation) settings."""
+    queue_path: str = "data/discovery_queue.json"
+
+
+@dataclass(frozen=True)
+class LocalServerConfig:
+    """Config for local OpenAI-compatible server (LM Studio, Ollama)."""
+    base_url: str = "http://localhost:1234/v1"
+    api_key: str = "lm-studio"
+    model: str = "qwen3-0.6b"
+
+
+@dataclass(frozen=True)
+class ModelsConfig:
+    """Local model directory for discovery."""
+    directory: str = ""
+
+
+@dataclass(frozen=True)
+class RolesConfig:
+    """Model path mappings for agent roles (relative to models.directory).
+
+    Model families:
+      - Qwen3: thinking models, <tool_call> XML format
+      - LFM2/LFM2.5: LiquidAI hybrid conv+attn, <|tool_call_start|> format, 32K context
+    """
+    micro: str = "Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf"
+    small: str = "Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+    medium: str = "Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf"
+    vision: str = "Qwen3-VL-8B-Instruct-GGUF/Qwen3-VL-8B-Instruct-Q4_K_M.gguf"
+    # LiquidAI LFM2.5 — efficient hybrid conv+attn, 32K ctx, great for agentic/RAG
+    fast: str = "LFM2.5-1.2B-Instruct-GGUF/LFM2.5-1.2B-Instruct-Q8_0.gguf"
+    reasoning: str = "LFM2.5-1.2B-Thinking-GGUF/LFM2.5-1.2B-Thinking-Q8_0.gguf"
+    orchestrator: str = "LFM2.5-1.2B-Instruct-GGUF/LFM2.5-1.2B-Instruct-Q8_0.gguf"
+    thinker: str = "LFM2.5-1.2B-Thinking-GGUF/LFM2.5-1.2B-Thinking-Q8_0.gguf"
+    # Liquid Nanos — task-specific LFM2 models (https://huggingface.co/collections/LiquidAI/liquid-nanos)
+    lfm2_tool: str = "LFM2-1.2B-Tool-GGUF/LFM2-1.2B-Tool-Q4_K_M.gguf"
+    lfm2_rag: str = "LFM2-1.2B-RAG-GGUF/LFM2-1.2B-RAG-Q4_K_M.gguf"
+    lfm2_extract: str = "LFM2-1.2B-Extract-GGUF/LFM2-1.2B-Extract-Q4_K_M.gguf"
+    lfm2_extract_350m: str = "LFM2-350M-Extract-GGUF/LFM2-350M-Extract-Q4_K_M.gguf"
+    lfm2_math: str = "LFM2-350M-Math-GGUF/LFM2-350M-Math-Q4_K_M.gguf"
+    lfm2_transcript: str = "LFM2-2.6B-Transcript-GGUF/LFM2-2.6B-Transcript-Q4_K_M.gguf"
+    # LFM2.5-VL (vision-language): https://huggingface.co/collections/LiquidAI/lfm25-vl
+    lfm2_vl: str = "LFM2.5-VL-1.6B-GGUF/LFM2.5-VL-1.6B-Q4_0.gguf"
+    # LFM2.5-JP (Japanese): https://huggingface.co/LiquidAI/LFM2.5-1.2B-JP-GGUF
+    lfm2_jp: str = "LFM2.5-1.2B-JP-GGUF/LFM2.5-1.2B-JP-Q4_K_M.gguf"
+    # Fallback / best performance — use when health is low or explicit --role fallback
+    fallback: str = "Qwen3-14B-Instruct-GGUF/Qwen3-14B-Instruct-Q4_K_M.gguf"
+    # Long-context steps (same model as medium/fallback, use with role_context for larger n_ctx)
+    report_large: str = ""
+    analyze_large: str = ""
+
+
+@dataclass(frozen=True)
+class RoleContextConfig:
+    """Per-role n_ctx overrides. 0 means use global model.n_ctx default."""
+    micro: int = 4096
+    small: int = 8192
+    medium: int = 16384
+    vision: int = 8192
+    fast: int = 8192
+    reasoning: int = 8192
+    orchestrator: int = 8192
+    thinker: int = 8192
+    fallback: int = 16384
+    report_large: int = 16384  # Use for report/synthesis steps to avoid context overflow
+    analyze_large: int = 16384
+    lfm2_tool: int = 0
+    lfm2_rag: int = 0
+    lfm2_extract: int = 0
+    lfm2_extract_350m: int = 0
+    lfm2_math: int = 0
+    lfm2_transcript: int = 0
+    lfm2_vl: int = 0
+    lfm2_jp: int = 0
+
+    def get(self, role: str, default: int = 0) -> int:
+        """Get n_ctx for a role, returning default if not set or 0."""
+        val = getattr(self, role, 0)
+        return val if val > 0 else default
+
+
+@dataclass(frozen=True)
+class AppConfig:
+    model: ModelConfig = field(default_factory=ModelConfig)
+    pool: PoolConfig = field(default_factory=PoolConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
+    tools: ToolsConfig = field(default_factory=ToolsConfig)
+    pipeline: PipelineConfig = field(default_factory=PipelineConfig)
+    evaluator: EvaluatorConfig = field(default_factory=EvaluatorConfig)
+    local_server: LocalServerConfig = field(default_factory=LocalServerConfig)
+    models: ModelsConfig = field(default_factory=ModelsConfig)
+    roles: RolesConfig = field(default_factory=RolesConfig)
+    research: ResearchConfig = field(default_factory=ResearchConfig)
+    discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
+    role_context: RoleContextConfig = field(default_factory=RoleContextConfig)
+
+
+def _merge(defaults: dict, overrides: dict) -> dict:
+    """Recursively merge overrides into defaults."""
+    result = dict(defaults)
+    for key, value in overrides.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def _make_config(section_cls, data: dict):
+    """Instantiate a frozen dataclass, ignoring unknown keys."""
+    valid = {f.name for f in section_cls.__dataclass_fields__.values()}
+    filtered = {k: v for k, v in data.items() if k in valid}
+    # Convert lists to tuples for frozen dataclasses
+    for k, v in filtered.items():
+        if isinstance(v, list):
+            filtered[k] = tuple(v)
+    return section_cls(**filtered)
+
+
+def config_with_workspace(config: AppConfig, workspace_root: Path) -> AppConfig:
+    """Return a new AppConfig with memory and research paths overridden for the workspace."""
+    root = Path(workspace_root).resolve()
+    notes_dir = str(root / "memory")
+    db_path = str(root / "memory.db")
+    queue_path = str(root / "queue.json")
+    interrupt_path = str(root / "interrupt.flag")
+
+    memory = MemoryConfig(
+        db_path=db_path,
+        notes_dir=notes_dir,
+        auto_commit=config.memory.auto_commit,
+        memory_strategy=config.memory.memory_strategy,
+        memory_search_limit=config.memory.memory_search_limit,
+        vector_db_path=config.memory.vector_db_path or str(root / "memory" / "chroma"),
+        embedding_model=config.memory.embedding_model,
+        fts_preview_chars=config.memory.fts_preview_chars,
+        consolidation_enabled=config.memory.consolidation_enabled,
+        consolidation_interval=config.memory.consolidation_interval,
+        consolidation_min_notes=config.memory.consolidation_min_notes,
+        agentic_enabled=config.memory.agentic_enabled,
+        agentic_llm_backend=config.memory.agentic_llm_backend,
+        agentic_llm_model=config.memory.agentic_llm_model,
+        agentic_embedding_model=config.memory.agentic_embedding_model,
+        agentic_api_key=config.memory.agentic_api_key,
+    )
+    research = ResearchConfig(
+        queue_path=queue_path,
+        interrupt_flag_path=interrupt_path,
+        extended_mode=config.research.extended_mode,
+        director_role=config.research.director_role,
+        expert_role=config.research.expert_role,
+        expert_count=config.research.expert_count,
+        poll_seconds=config.research.poll_seconds,
+        route_gen_enabled=config.research.route_gen_enabled,
+        route_gen_interval=config.research.route_gen_interval,
+        route_gen_min_backlog=config.research.route_gen_min_backlog,
+        parallel_items=config.research.parallel_items,
+        refinement_pipeline=config.research.refinement_pipeline,
+        refinement_passes=config.research.refinement_passes,
+        seed_expansion_role=config.research.seed_expansion_role,
+        seed_expansion_count=config.research.seed_expansion_count,
+        branch_connector_enabled=config.research.branch_connector_enabled,
+        branch_connector_interval=config.research.branch_connector_interval,
+        lateral_thinking_enabled=config.research.lateral_thinking_enabled,
+        lateral_interval=config.research.lateral_interval,
+        lateral_min_backlog=config.research.lateral_min_backlog,
+    )
+    return AppConfig(
+        model=config.model,
+        pool=config.pool,
+        memory=memory,
+        tools=config.tools,
+        pipeline=config.pipeline,
+        evaluator=config.evaluator,
+        local_server=config.local_server,
+        models=config.models,
+        roles=config.roles,
+        research=research,
+        discovery=config.discovery,
+        role_context=config.role_context,
+    )
+
+
+def load_config(path: Path | str | None = None) -> AppConfig:
+    """Load configuration from a TOML file, falling back to defaults."""
+    raw: dict = {}
+    if path is not None:
+        p = Path(path)
+        if p.exists():
+            with open(p, "rb") as f:
+                raw = tomllib.load(f)
+
+    for section, key in (("model", "path"), ("models", "directory")):
+        value = raw.get(section, {}).get(key)
+        if isinstance(value, str) and value:
+            raw[section][key] = os.path.expanduser(value)
+
+    return AppConfig(
+        model=_make_config(ModelConfig, raw.get("model", {})),
+        pool=_make_config(PoolConfig, raw.get("pool", {})),
+        memory=_make_config(MemoryConfig, raw.get("memory", {})),
+        tools=_make_config(ToolsConfig, raw.get("tools", {})),
+        pipeline=_make_config(PipelineConfig, raw.get("pipeline", {})),
+        evaluator=_make_config(EvaluatorConfig, raw.get("evaluator", {})),
+        local_server=_make_config(LocalServerConfig, raw.get("local_server", {})),
+        models=_make_config(ModelsConfig, raw.get("models", {})),
+        roles=_make_config(RolesConfig, raw.get("roles", {})),
+        research=_make_config(ResearchConfig, raw.get("research", {})),
+        discovery=_make_config(DiscoveryConfig, raw.get("discovery", {})),
+        role_context=_make_config(RoleContextConfig, raw.get("role_context", {})),
+    )

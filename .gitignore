@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+
+# Models
+*.gguf
+
+# Runtime data (workspaces, memory DBs, agent-created tools)
+data/
+
+# Environment
+.env
+.venv/
+venv/
+env/
+.python-version
+
+# IDE / editor tooling
+.vscode/
+.idea/
+.cursor/
+.refactree/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Claude
+.claude/
+
+# Vendored/cloned third-party repo (installed via `uv sync --extra agentic`)
+A-mem-sys/

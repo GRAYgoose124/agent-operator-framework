@@ -1,0 +1,12 @@
+# Vision pipeline for VL models (e.g. Qwen3-VL-8B).
+# Use with: aof pipeline vision_pipeline.toml file://path/to/image.png
+# The input is the image path; image_input = "{input}" passes it to the vision step.
+
+[[steps]]
+name = "describe"
+system_prompt = "You describe images accurately and concisely."
+goal_template = "Describe what you see in this image."
+tools = []
+role = "vision"
+max_steps = 1
+image_input = "{input}"

@@ -1,0 +1,22 @@
+# RAG-style pipeline: pre-fetches memory and injects as {memory_context} for synthesis.
+# Use with: aof pipeline memory_rag.toml "research topic"
+# Requires lfm2_rag role (LFM2-1.2B-RAG) for the synthesis step.
+
+[[steps]]
+name = "gather"
+system_prompt = "You search and collect information. Use tools when helpful."
+goal_template = "Gather information about: {input}"
+tools = ["web_search", "search_memory"]
+role = "lfm2_tool"
+max_steps = 3
+
+[[steps]]
+name = "synthesize"
+system_prompt = "You synthesize findings using the provided memory context. Integrate context with new content."
+goal_template = "Synthesize using this context:\n{memory_context}\n\nContent to integrate:\n{prev_result}"
+tools = []
+role = "lfm2_rag"
+max_steps = 2
+memory_context = true
+memory_search_limit = 8
+memory_tags = ["research", "synthesis"]

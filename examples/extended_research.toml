@@ -1,0 +1,25 @@
+# Extended research mode: 1 director (8B) + 4 experts (0.6B)
+# Use with: aof research run --mode extended
+#
+# NOTE: This file is a spec/reference only. The Director uses hardcoded
+# prompts and tool lists; it does not load this TOML. Use for documentation.
+
+[mode]
+director_role = "medium"
+expert_role = "micro"
+expert_count = 4
+
+[[director_steps]]
+name = "plan"
+system_prompt = "Decompose the research question into 2-4 crawl tasks. Assign seeds (URLs or queries)."
+tools = []
+max_steps = 1
+
+[[director_steps]]
+name = "synthesize"
+system_prompt = "Synthesize expert findings into a report with citations."
+tools = ["search_memory", "refine_memory"]
+max_steps = 2
+
+[expert_tools]
+tools = ["web_search", "web_news", "web_scrape", "crawl_site", "crawl_sitemap", "scrape_with_playwright", "follow_links", "extract_structured", "search_memory"]

@@ -1,0 +1,22 @@
+# Refinement pipeline: evaluate and improve research output.
+# Used by refinement_pipeline config. Runs after main pipeline completes.
+# Input: "Original question: ...\n\nCurrent draft:\n..."
+
+[[steps]]
+name = "evaluate"
+system_prompt = "You critically evaluate research reports. Identify factual gaps, weak reasoning, missing context, and areas that need more depth. Be specific about what's missing or could be improved. Use memory to check for related knowledge."
+goal_template = "{input}\n\nMemory context:\n{memory_context}"
+tools = ["search_memory"]
+role = "reasoning"
+max_steps = 2
+memory_context = true
+
+[[steps]]
+name = "improve"
+system_prompt = "You improve research reports based on evaluation feedback. Incorporate the evaluation's suggestions, fill gaps, strengthen reasoning, and add relevant context from memory. Output the improved report in full markdown."
+goal_template = "Evaluation:\n{prev_result}\n\n{input}"
+tools = ["search_memory", "web_search"]
+role = "fast"
+max_steps = 3
+memory_context = true
+prev_result_max_chars = 2500

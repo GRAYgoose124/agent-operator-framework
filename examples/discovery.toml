@@ -1,0 +1,11 @@
+# Discovery pipeline: breadth-first web navigation.
+# Explores a seed (URL or topic), finds interesting links/topics, can add to research queue.
+# Use with: aof discovery run --pipeline examples/discovery.toml
+
+[[steps]]
+name = "explore"
+system_prompt = "You explore the web for interesting information. Use web_search, web_news, extract_links to discover content. When you find topics worth deeper research, call add_to_research_queue(question) to add them to the research backlog."
+goal_template = "Explore and discover: {input}"
+tools = ["web_search", "web_news", "extract_links", "add_to_research_queue"]
+role = "micro"
+max_steps = 5

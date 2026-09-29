@@ -1,0 +1,82 @@
+
+- [x] DuckDuckGo search tools (web_search, web_news)
+- [x] Tool calling with registry + sandbox
+- [x] Adding new tools (agent-created scripts, crawler builder)
+- [x] Context management / memory system (SQLite FTS5 + Zettelkasten)
+- [x] Async agent pool with concurrent execution
+- [x] LFM2.5 parsing (Pythonic + JSON tool call formats)
+- [x] Multi-model role routing (micro/small/medium/vision/fast/reasoning/fallback)
+- [x] Qwen3-14B as fallback model
+- [x] LangChain, LangGraph, and Deep Agents integration
+- [x] Research queue with Kanban (backlog/in_progress/blocked/done)
+- [x] Extended research mode (director + expert swarm)
+- [x] Canary tests for model validation
+- [x] Hybrid vector + FTS retrieval (ChromaDB + sentence-transformers)
+- [x] LFM2.5 / Liquid Nanos pipeline (role resolution, lfm2_nanos.toml E2E)
+- [x] Complete LFM2.5 agent pipeline — use all [Liquid Nanos](https://huggingface.co/collections/LiquidAI/liquid-nanos) task-specific models (verified with mocks)
+- [x] Citation tracking tool for research mode (add_citation, ResearchItem.citation_entries, queue integration)
+- [x] Research pipeline and memory system use citations as source/mechanism (stored in notes + queue)
+- [x] Research checkpoint/resume on interrupt (director saves partial findings, resume from checkpoint)
+- [x] beautifulsoup4 tools (extract_links, extract_meta, parse_html_fragment) and integration with pipeline
+- [x] examples/research_sota.toml pipeline
+- [x] examples/vision_pipeline.toml (VL / image_input)
+- [x] examples/parallel_sample.toml (parallel_count, choose)
+- [x] Discovery pipeline (DiscoveryQueue, add_to_research_queue, aof discovery add/list/run, examples/discovery.toml)
+- [x] Citation embeddings in separate collection (search_citations for retrieval)
+- [x] examples/memory_rag.toml (RAG step with memory_context + lfm2_rag)
+- [x] Per-step memory overrides (memory_strategy, memory_search_limit)
+- [x] memory_context placeholder for RAG / step–memory integration
+- [x] on_error handling (propagate | retry | abort)
+- [x] Per-step memory_tags filter (task-specific memory retrieval)
+- [x] Task tag conventions (research, synthesis, reflection) — docs/memory_tags.md
+- [x] Director/research notes tagged with research + synthesis
+- [x] RAG synthesis pattern (memory_context + lfm2_rag) documented and exemplified
+- [x] LFM2 Transcript role (lfm2_transcript) + examples/lfm2_transcript.toml
+- [x] LFM2.5-VL role (lfm2_vl) + examples/lfm2_vl_pipeline.toml
+- [x] lfm2_extract_350m for smaller Extract variant
+- [x] orchestrator, thinker roles (LFM2.5)
+- [x] lfm2_jp role (Japanese)
+- [x] Pipeline when condition (non_empty skips empty/failure prev_result)
+- [x] Error propagation truncation (200 chars)
+- [x] Improve context / memory system — extend hybrid (VectorHaSH concepts)
+    - [x] Powerful context-aware task-specific crafted agent memories (memory_tags)
+    - [x] Integrate LFM2 Rag into our memory system (RAG synthesis pattern in memory_rag.toml)
+- [x] Improve behaviour pipelines 
+    - more robust multi-step execution (error propagation with truncation, when condition)
+    - more powerful agent framework, composability, directability
+- [x] More model support of various kinds, more model roles (lfm2_jp)
+- [x] Ensure we can use different sizes of the same type of LFM2.5 Liquid nano models and support all of them / their various roles (lfm2_tool, lfm2_rag, lfm2_extract, lfm2_extract_350m, lfm2_math, lfm2_transcript)
+- [x] add LFM2.5-VL support (lfm2_vl role, examples/lfm2_vl_pipeline.toml)
+- [x] improve orchestrator/thinker/etc roles for LFM2.5 (orchestrator, thinker roles; examples/lfm2_orchestrator.toml)
+---
+- [x] Continuous researcher: workspace, REPL, artifact output (aof researcher run)
+- [x] Per-role context sizes (`[role_context]` config — no more n_ctx=2048 for 32K models)
+- [x] Search retry + backoff + TTL cache (DuckDuckGo rate-limit resilience)
+- [x] Spawn step in research pipelines (auto-generates follow-up questions)
+- [x] Parallel research items (`--parallel N`, `research.parallel_items` config)
+- [x] Rich workspace context (artifact previews, knowledge_summary, topic_map, done counts)
+- [x] Refinement pipeline pass (evaluate+improve via `examples/refine.toml`)
+- [x] Step repetition (`max_repeats`, `repeat_until` in pipeline steps)
+- [x] Pipeline signals (`[SIGNAL:key=value]` cross-step metadata, `{signals}` in goal_template)
+- [x] Memory consolidation (cluster related notes, synthesize summaries, topic map)
+- [x] Structured logging (dual handlers: console INFO+ and `aof_debug.log` DEBUG)
+- [x] Clone workspace (`aof researcher clone --from X --to Y`)
+- [x] Headless daemon mode (`aof researcher start/attach/stop`)
+- [x] Context building fixes (llama_decode -1 / degraded agent output):
+    - CHARS_PER_TOKEN 4→3 (conservative token estimation prevents overflow)
+    - Goal deduplication in execute_step (no more double-injecting goal content)
+    - Scaled task_reserve with n_ctx (thinking models get proportional budget)
+    - Overflow protection in LlamaBackend (pre-truncation + graceful error on overflow)
+    - Skip plan phase for no-tool pipeline steps (eliminates wasteful planning overhead)
+- [x] Improve duckduckgo_search and scrapy scripts/tools steps for agents to rely on.
+    - Pipelines now provide clearer step-level guidance on which search/scraper tools to use and suggested next steps.
+    - Added `docs/research_steps.md` describing the recommended research workflow and tool choices.
+- [x] Dynamic scraper self-improvement (agent proposes scraper updates)
+    - New `propose_crawler_update` tool writes markdown proposals under `data/crawlers/proposals/` for later review.
+    - SOTA research pipeline can call this tool when scraping repeatedly fails for a site.
+- [x] Should plan follow up questions and research paths
+    - Spawn steps now prefer adding at least one follow-up when reports mention gaps/caveats and briefly state a research path when they do.
+- [x] Handle errors like these gracefully: "[Error: context overflow — prompt too large for 8192-token window]"
+    - Llama backend now retries once with more aggressive truncation before surfacing a context overflow error.
+- [x] Emitting "No follow-up needed." too often, when it should be researching and discovering, refining or consolidating
+    - Spawn prompts only allow "No follow-up needed." when the report is truly exhaustive and there are no meaningful directions left.

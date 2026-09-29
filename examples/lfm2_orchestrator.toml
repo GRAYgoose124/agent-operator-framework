@@ -1,0 +1,26 @@
+# LFM2.5 Orchestrator pipeline: plan step uses orchestrator role, execution uses experts.
+# https://huggingface.co/collections/LiquidAI/lfm25
+
+[[steps]]
+name = "plan"
+system_prompt = "You decompose tasks into 2-4 concrete sub-tasks. Output a JSON object with a 'steps' array of strings."
+goal_template = "Plan how to accomplish: {input}"
+tools = []
+role = "orchestrator"
+max_steps = 1
+
+[[steps]]
+name = "execute"
+system_prompt = "You execute the assigned sub-task. Be thorough and return findings."
+goal_template = "Task: {input}\n\nPlan: {prev_result}"
+tools = ["web_search", "search_memory"]
+role = "lfm2_tool"
+max_steps = 3
+
+[[steps]]
+name = "synthesize"
+system_prompt = "You synthesize findings into a final answer."
+goal_template = "Synthesize these findings:\n{prev_result}"
+tools = []
+role = "thinker"
+max_steps = 2

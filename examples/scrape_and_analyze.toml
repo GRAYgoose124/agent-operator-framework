@@ -1,0 +1,15 @@
+[[steps]]
+name = "scrape"
+system_prompt = "You scrape web pages and extract their text content."
+goal_template = "Scrape and extract the main content from: {input}"
+tools = ["web_scrape"]
+role = "micro"
+max_steps = 2
+
+[[steps]]
+name = "analyze"
+system_prompt = "You analyze text and extract key information. Optionally use refine_memory to consolidate related notes."
+goal_template = "Analyze this text. Extract entities, summarize, and compute any statistics:\n{prev_result}"
+tools = ["text_entities", "text_summarize", "numpy_stats", "refine_memory"]
+role = "small"
+max_steps = 3

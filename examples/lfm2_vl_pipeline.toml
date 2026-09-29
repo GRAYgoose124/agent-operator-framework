@@ -1,0 +1,14 @@
+# LFM2.5-VL pipeline: vision tasks using LFM2.5-VL-1.6B.
+# https://huggingface.co/collections/LiquidAI/lfm25-vl
+#
+# Use with: aof pipeline lfm2_vl_pipeline.toml file://path/to/image.png
+# Configure roles in config.toml: lfm2_vl = "LFM2.5-VL-1.6B-GGUF/LFM2.5-VL-1.6B-Q4_0.gguf"
+
+[[steps]]
+name = "describe"
+system_prompt = "You describe images accurately and concisely."
+goal_template = "Describe what you see in this image."
+tools = []
+role = "lfm2_vl"
+max_steps = 1
+image_input = "{input}"

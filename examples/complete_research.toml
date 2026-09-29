@@ -1,0 +1,53 @@
+# Full composability: orchestrator, multi-role, memory_context, when, on_error.
+# Use: aof pipeline complete_research.toml "AI trends 2025"
+# Or: aof research add "AI trends 2025" && aof research run --pipeline examples/complete_research.toml --limit 1 --backend llama
+
+[[steps]]
+name = "plan"
+system_prompt = "You decompose research questions into 2-4 concrete sub-tasks. Output a JSON object with a 'steps' array of strings."
+goal_template = "Plan how to research: {input}"
+tools = []
+role = "orchestrator"
+max_steps = 1
+on_error = "propagate"
+
+[[steps]]
+name = "gather"
+system_prompt = "You search and collect information. Use web_search and search_memory for context."
+goal_template = "Research: {input}\n\nPlan: {prev_result}"
+tools = ["web_search", "search_memory"]
+role = "lfm2_tool"
+max_steps = 3
+on_error = "propagate"
+
+[[steps]]
+name = "extract"
+system_prompt = "Extract key facts, entities, and keywords from the provided text."
+goal_template = "Extract key facts and entities from:\n{prev_result}"
+tools = []
+role = "lfm2_extract"
+max_steps = 2
+when = "non_empty"
+on_error = "propagate"
+
+[[steps]]
+name = "synthesize"
+system_prompt = "You synthesize findings using the provided memory context. Integrate context with new content."
+goal_template = "Synthesize using this context:\n{memory_context}\n\nContent to integrate:\n{prev_result}"
+tools = []
+role = "lfm2_rag"
+max_steps = 2
+memory_context = true
+memory_search_limit = 8
+memory_tags = ["research", "synthesis"]
+on_error = "propagate"
+
+[[steps]]
+name = "store"
+system_prompt = "You persist key insights to memory. Use refine_memory to create consolidated notes with tags research, synthesis."
+goal_template = "Store these findings for future reference:\n{prev_result}"
+tools = ["refine_memory"]
+role = "micro"
+max_steps = 1
+when = "non_empty"
+on_error = "propagate"

@@ -1,0 +1,19 @@
+# LFM2.5 reasoning pipeline: use the Thinking model for analysis,
+# then the Instruct model for fast synthesis.
+# LFM2.5 has 32K context — ideal for multi-step reasoning chains.
+
+[[steps]]
+name = "analyze"
+system_prompt = "You are an analytical reasoning agent. Think step by step. Break down the problem carefully."
+goal_template = "Analyze the following problem and identify key factors:\n{input}"
+tools = []
+role = "reasoning"  # LFM2.5-1.2B-Thinking (chain-of-thought)
+max_steps = 3
+
+[[steps]]
+name = "synthesize"
+system_prompt = "You synthesize analysis into a clear, actionable summary."
+goal_template = "Based on this analysis, write a concise summary with recommendations:\n{prev_result}"
+tools = []
+role = "fast"  # LFM2.5-1.2B-Instruct (fast, direct answers)
+max_steps = 2

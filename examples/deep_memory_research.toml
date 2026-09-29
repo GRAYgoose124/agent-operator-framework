@@ -1,0 +1,33 @@
+# Full-featured research pipeline with memory tools (Deep Agent backend).
+# Uses /memories/ path and search_memory; persists key findings via refine_memory.
+# Use with: aof pipeline deep_memory_research.toml "topic" --backend deep
+
+[[steps]]
+name = "search"
+system_prompt = """You are a research agent. Before searching, use search_memory to check for existing context on the topic.
+Search the web for information and collect key findings.
+Save important findings to memory when appropriate (use refine_memory or note paths under /memories/)."""
+goal_template = "Research the following topic and summarize key findings: {input}"
+tools = ["web_search", "search_memory"]
+role = "micro"
+max_steps = 4
+
+[[steps]]
+name = "synthesize"
+system_prompt = """You synthesize research findings into a clear, concise report.
+Use search_memory to enrich your synthesis with relevant prior knowledge.
+Store key insights to memory for future reference."""
+goal_template = "Write a brief report based on this research:\n{prev_result}"
+tools = ["search_memory", "refine_memory"]
+role = "micro"
+max_steps = 3
+
+[[steps]]
+name = "store"
+system_prompt = """You persist research summaries to long-term memory.
+Create consolidated notes in /memories/ when appropriate.
+Use refine_memory to merge related notes into coherent summaries."""
+goal_template = "Store and consolidate these findings for future reference:\n{prev_result}"
+tools = ["refine_memory", "search_memory"]
+role = "micro"
+max_steps = 2

@@ -1,0 +1,99 @@
+[model]
+path = "~/.lmstudio/models/lmstudio-community/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf"
+n_ctx = 2048
+n_threads = 4
+n_gpu_layers = 0
+chat_format = "chatml"
+temperature = 0.7
+max_tokens = 512
+
+[pool]
+max_agents = 8
+inference_pool_size = 2   # number of Llama instances to load
+thread_pool_workers = 4
+
+[memory]
+db_path = "data/memory.db"
+notes_dir = "data/memory"
+auto_commit = true
+memory_strategy = "search"  # search | recent | agent_notes | hybrid
+memory_search_limit = 5
+# Optional A-MEM (agentic memory): install with uv sync --extra agentic
+# agentic_enabled = false
+# agentic_llm_backend = "ollama"   # openai | ollama | openrouter | sglang
+# agentic_llm_model = "llama2"     # or gpt-4o-mini, etc.
+# agentic_embedding_model = "all-MiniLM-L6-v2"
+# agentic_api_key = ""            # for openai/openrouter; or set env
+
+[tools]
+scripts_dir = "data/tools"
+sandbox_timeout = 30
+blocked_imports = ["os", "subprocess", "socket", "shutil", "ctypes"]
+
+[pipeline]
+default_max_steps = 10
+max_tool_rounds = 5
+
+[evaluator]
+check_interval_seconds = 5.0
+health_threshold = 0.5
+guidance_cooldown_seconds = 30.0
+
+[research]
+queue_path = "data/research_queue.json"
+poll_seconds = 3
+route_gen_enabled = false
+route_gen_interval = 300
+route_gen_min_backlog = 2
+# Seed expansion (used with --seed-question): role = medium (8B) or fallback (14B)
+# seed_expansion_role = "medium"
+# seed_expansion_count = 30
+# Branch connector: write connections note linking themes (optional)
+# branch_connector_enabled = false
+# branch_connector_interval = 600
+# Lateral thinking: add tangential questions to queue (optional)
+# lateral_thinking_enabled = false
+# lateral_interval = 300
+# lateral_min_backlog = 5
+
+[discovery]
+queue_path = "data/discovery_queue.json"
+interrupt_flag_path = "data/research_interrupt.flag"
+extended_mode = false
+director_role = "medium"
+expert_role = "micro"
+expert_count = 4
+
+# Local server backend (LM Studio / Ollama — OpenAI-compatible API, fully local)
+[local_server]
+base_url = "http://localhost:1234/v1"
+api_key = "lm-studio"
+model = "qwen3-0.6b"
+
+# Model directory for discovering available local models
+[models]
+directory = "~/.lmstudio/models/lmstudio-community"
+
+# Multi-model role assignments (role -> model path or server model name)
+# Agents are assigned roles; each role can use a different model/backend
+[roles]
+micro = "Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf"       # Simple search, basic tasks
+small = "Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"  # Code gen, moderate reasoning
+medium = "Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf"            # Orchestration, complex planning
+vision = "Qwen3-VL-8B-Instruct-GGUF/Qwen3-VL-8B-Instruct-Q4_K_M.gguf"  # Vision/image tasks
+# LiquidAI LFM2.5 — hybrid conv+attn, 32K ctx, fast inference, great for agentic/RAG
+fast = "LFM2.5-1.2B-Instruct-GGUF/LFM2.5-1.2B-Instruct-Q8_0.gguf"       # Fast instruct, tool calling
+reasoning = "LFM2.5-1.2B-Thinking-GGUF/LFM2.5-1.2B-Thinking-Q8_0.gguf"  # Chain-of-thought reasoning
+fallback = "Qwen3-14B-Instruct-GGUF/Qwen3-14B-Instruct-Q4_K_M.gguf"  # Best performance when needed
+
+# Per-role context sizes (0 = use global model.n_ctx default)
+# report_large / analyze_large: use in pipelines for report/synthesis steps; set overflow_fallback_role = "report_large" to retry on context overflow
+[role_context]
+micro = 4096
+small = 8192
+medium = 16384
+fast = 8192
+reasoning = 8192
+fallback = 16384
+report_large = 16384
+analyze_large = 16384

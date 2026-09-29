@@ -1,0 +1,13 @@
+# LFM2 Transcript pipeline: meeting summarization using LFM2-2.6B-Transcript.
+# https://huggingface.co/LiquidAI/LFM2-2.6B-Transcript
+#
+# Use with: aof pipeline lfm2_transcript.toml "Meeting transcript text here..."
+# Or pipe from a file: aof pipeline lfm2_transcript.toml "$(cat meeting.txt)"
+
+[[steps]]
+name = "summarize"
+system_prompt = "You summarize meetings concisely. Extract key decisions, action items, and topics."
+goal_template = "Summarize this meeting transcript:\n\n{input}"
+tools = []
+role = "lfm2_transcript"
+max_steps = 1

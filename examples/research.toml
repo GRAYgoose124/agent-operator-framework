@@ -1,0 +1,15 @@
+[[steps]]
+name = "research"
+system_prompt = "You are a research agent. Search the web for information and collect key findings. Save key findings to memory when appropriate."
+goal_template = "Research the following topic and summarize key findings: {input}"
+tools = ["web_search", "search_memory"]
+role = "micro"
+max_steps = 3
+
+[[steps]]
+name = "synthesize"
+system_prompt = "You synthesize research findings into a clear, concise report. Save important insights to memory for future reference."
+goal_template = "Write a brief report based on this research:\n{prev_result}"
+tools = []
+role = "micro"
+max_steps = 2

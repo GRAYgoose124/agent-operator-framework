@@ -1,0 +1,37 @@
+# Showcases all builtin tools in one pipeline.
+# Step 1: gather (web_search, web_news)
+# Step 2: extract (web_scrape, file_read)
+# Step 3: analyze (text_entities, text_summarize, numpy_stats)
+# Step 4: store and refine (refine_memory, search_memory)
+
+[[steps]]
+name = "gather"
+system_prompt = "You gather information from the web. Use web_search for general queries and web_news for current events."
+goal_template = "Gather information about: {input}"
+tools = ["web_search", "web_news"]
+role = "micro"
+max_steps = 3
+
+[[steps]]
+name = "extract"
+system_prompt = "You extract content from URLs and local files. Use web_scrape for web pages and file_read for local files."
+goal_template = "Extract content from these sources:\n{prev_result}"
+tools = ["web_scrape", "file_read"]
+role = "micro"
+max_steps = 3
+
+[[steps]]
+name = "analyze"
+system_prompt = "You analyze text. Use text_entities for entities, text_summarize for summaries, numpy_stats for numeric stats."
+goal_template = "Analyze this content:\n{prev_result}"
+tools = ["text_entities", "text_summarize", "numpy_stats"]
+role = "small"
+max_steps = 3
+
+[[steps]]
+name = "store"
+system_prompt = "You store and refine memories. Use search_memory to find relevant notes, refine_memory to merge or update tags."
+goal_template = "Store key insights and optionally consolidate related notes:\n{prev_result}"
+tools = ["refine_memory", "search_memory"]
+role = "micro"
+max_steps = 2

@@ -1,0 +1,32 @@
+# LFM2 Liquid Nanos pipeline: task-specific models from
+# https://huggingface.co/collections/LiquidAI/liquid-nanos
+#
+# Each step uses a specialized LFM2 model:
+# - lfm2_tool: tool calling, agentic tasks
+# - lfm2_rag: RAG, retrieval-augmented generation
+# - lfm2_extract: entity/keyword extraction
+# - lfm2_math: math reasoning
+
+[[steps]]
+name = "search"
+system_prompt = "You are a research agent. Search the web for relevant information."
+goal_template = "Search for information about: {input}"
+tools = ["web_search"]
+role = "lfm2_tool"
+max_steps = 3
+
+[[steps]]
+name = "extract"
+system_prompt = "Extract key facts and entities from the provided text."
+goal_template = "Extract key facts and entities from:\n{prev_result}"
+tools = []
+role = "lfm2_extract"
+max_steps = 2
+
+[[steps]]
+name = "synthesize"
+system_prompt = "Synthesize extracted information into a coherent summary."
+goal_template = "Summarize these findings:\n{prev_result}"
+tools = []
+role = "lfm2_rag"
+max_steps = 2

@@ -1,0 +1,20 @@
+# Sample pipeline with parallel steps (sample-and-choose).
+# Runs 3 agents in parallel on the brainstorm step, then picks the best by health score.
+
+[[steps]]
+name = "brainstorm"
+system_prompt = "You brainstorm creative ideas. Be concise."
+goal_template = "Brainstorm ideas for: {input}"
+tools = []
+role = "micro"
+max_steps = 1
+parallel_count = 3
+choose = "best"
+
+[[steps]]
+name = "refine"
+system_prompt = "You refine and expand on ideas."
+goal_template = "Refine and expand: {prev_result}"
+tools = []
+role = "fast"
+max_steps = 1
