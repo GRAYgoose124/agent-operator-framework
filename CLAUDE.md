@@ -113,6 +113,7 @@ SQLite FTS5 + markdown files in `data/memory/` (git-versioned). Strategies: sear
 |------|---------|
 | `agent/base.py` | AgentState, AgentContext, AgentMetrics, BaseAgent protocol |
 | `agent/pool.py` | Concurrent agent pool with multi-model routing |
+| `specialists/registry.py` | Capability -> provider-chain cascade (Needle 3/2, role models, embeddings); see `docs/VAULT_OVERHAUL.md` |
 | `inference/llama_server.py` | Managed llama.cpp `llama-server` backend (roles in `[llama_server] roles`); see `docs/llama-cpp.md` |
 | `agent/lifecycle.py` | Single agent state machine |
 | `agent/evaluator.py` | Health scoring, canary tests |

@@ -67,6 +67,12 @@ uv run aof researcher run --workspace myproject
 | `--backend llama` | Legacy Pipeline | Multi-role, per-step routing, full composability |
 | `--backend server` | OpenAI-compatible API | LM Studio, Ollama, vLLM |
 
+## Specialist models
+
+Small task-specific models (Needle, Liquid Nanos, any configured role) are exposed as *capabilities* with cheap-first
+fallback chains (`[specialists.<capability>] providers = [...]`). Needle is optional: `uv sync --extra needle`
+(sets `NEEDLE_TELEMETRY=0`). See [docs/VAULT_OVERHAUL.md](docs/VAULT_OVERHAUL.md).
+
 ## Running through llama.cpp
 
 Models `llama-cpp-python` can't load (e.g. the `qwen35` architecture) can be served through a managed

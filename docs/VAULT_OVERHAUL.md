@@ -63,6 +63,21 @@ providers = ["needle:3", "sentence-transformers"]
 Provider kinds: `needle:<generation>`, `role:<role>` (existing GGUF/server roles), `llama_server`, plus a small
 `Specialist` protocol so new task-specific models can be added without touching call sites.
 
+Implemented in `src/aof/specialists/` (`annotate`, `classify`, `embed`, `judge`). A provider that abstains (returns
+`None`) or errors escalates to the next in the chain; per-provider calls/abstains/errors/seconds are recorded and
+`escalation_rate()` reports how often the cheapest tier could not settle a call. Providers whose package or model
+file is missing are skipped, so the same config works on machines without Needle or the Nano models.
+
+**Needle, as measured (cactus-needle 3.0.6, Windows):**
+- Extraction is *span-level*: it returned the fragment `projects to thalamic relay nuclei` and dropped "but not to
+  neocortex". Use it for fields (subject, topic, entities, year/number cues), not to write or split claims.
+- The engine withholds low-confidence calls (`suppressed_calls`); we treat that as *abstain* and escalate. Off-topic
+  text is therefore escalated rather than mislabelled. Numeric confidence scales differ by generation (Needle 3 ~0.07-0.3
+  for correct calls, Needle 2 ~0.2-0.97), so no cross-provider threshold is used.
+- Needle 2 often abstains or fails strict grounding validation; it is a fallback/test target, not the primary.
+- Needle 3 embeddings work (3072-d) but barely separate related from unrelated sentences (cosine 0.94 vs 0.93), and
+  Needle 2 has no embeddings. Embedding for dedupe/linking uses sentence-transformers; Needle embed is opt-in only.
+
 ### Note model additions
 
 `ZettelNote` gains `status` (`raw | refined | canonical | archived`), `sources` (citation ids/urls),
@@ -116,7 +131,7 @@ must be **scaffolded by the framework, not left to model initiative**:
 | 0 | Repo prepared for release (single init commit on `github-release`) | done |
 | 1 | `llama_server` backend + thinking control + docs (`docs/llama-cpp.md`) | done (verified with a real 9B) |
 | 1b | Qwen3.5-family support: `<function=...>` tool-call parsing, lone `</think>` split, sampling floor/overrides | done |
-| 2 | Specialist registry (capability → provider chain), Needle 3/2 adapter, LFM2 Nano roles wired in | planned |
+| 2 | Specialist registry (capability → provider chain), Needle 3/2 adapter, role providers (LFM2 Nanos, Qwen, llama-server) | done |
 | 3 | Atomic notes + provenance schema; refine passes (extract, dedupe, merge/split, verify) | planned |
 | 4 | Link proposals + hub/structure notes | planned |
 | 5 | Vault metrics + markdown export; before/after evaluation on a real seeded workspace | planned |

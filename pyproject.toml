@@ -25,6 +25,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 # Agentic memory (A-MEM): LLM-enriched memory with auto keywords/context/tags and evolution
+# Needle (Cactus): tiny native model for fielded extraction/classification (Needle 3 preferred, 2 fallback)
+needle = ["cactus-needle>=3.0"]
 agentic = ["agentic-memory @ git+https://github.com/WujiangXu/A-mem-sys.git"]
 
 [project.scripts]

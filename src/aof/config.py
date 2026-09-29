@@ -142,6 +142,22 @@ class LlamaServerConfig:
     roles: tuple[str, ...] = ()  # roles served through llama-server instead of llama-cpp-python
 
 
+# Default provider chains, cheapest first. Provider specs: "needle:<generation>", "role:<role>",
+# "sentence-transformers". Unavailable providers (package or model file missing) are skipped.
+DEFAULT_SPECIALIST_CHAINS: dict[str, tuple[str, ...]] = {
+    "annotate": ("needle:3", "needle:2", "role:lfm2_extract", "role:fast", "role:small"),
+    "classify": ("needle:3", "needle:2", "role:fast", "role:small"),
+    "embed": ("sentence-transformers",),
+    "judge": ("role:small", "role:large"),
+}
+
+
+@dataclass(frozen=True)
+class SpecialistsConfig:
+    """Capability -> ordered provider chain (see docs/VAULT_OVERHAUL.md)."""
+    chains: dict[str, tuple[str, ...]] = field(default_factory=lambda: dict(DEFAULT_SPECIALIST_CHAINS))
+
+
 @dataclass(frozen=True)
 class ModelsConfig:
     """Local model directory for discovery."""
@@ -226,6 +242,7 @@ class AppConfig:
     evaluator: EvaluatorConfig = field(default_factory=EvaluatorConfig)
     local_server: LocalServerConfig = field(default_factory=LocalServerConfig)
     llama_server: LlamaServerConfig = field(default_factory=LlamaServerConfig)
+    specialists: SpecialistsConfig = field(default_factory=SpecialistsConfig)
     models: ModelsConfig = field(default_factory=ModelsConfig)
     roles: RolesConfig = field(default_factory=RolesConfig)
     research: ResearchConfig = field(default_factory=ResearchConfig)
@@ -306,6 +323,16 @@ def config_with_workspace(config: AppConfig, workspace_root: Path) -> AppConfig:
     return replace(config, memory=memory, research=research)
 
 
+def _make_specialists(data: dict) -> SpecialistsConfig:
+    """`[specialists.<capability>] providers = [...]` overrides the default chain for that capability."""
+    chains = dict(DEFAULT_SPECIALIST_CHAINS)
+    for capability, section in data.items():
+        providers = section.get("providers") if isinstance(section, dict) else None
+        if providers:
+            chains[capability] = tuple(providers)
+    return SpecialistsConfig(chains=chains)
+
+
 def load_config(path: Path | str | None = None) -> AppConfig:
     """Load configuration from a TOML file, falling back to defaults."""
     raw: dict = {}
@@ -331,6 +358,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         evaluator=_make_config(EvaluatorConfig, raw.get("evaluator", {})),
         local_server=_make_config(LocalServerConfig, raw.get("local_server", {})),
         llama_server=_make_config(LlamaServerConfig, raw.get("llama_server", {})),
+        specialists=_make_specialists(raw.get("specialists", {})),
         models=_make_config(ModelsConfig, raw.get("models", {})),
         roles=_make_config(RolesConfig, raw.get("roles", {})),
         research=_make_config(ResearchConfig, raw.get("research", {})),
