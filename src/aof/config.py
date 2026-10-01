@@ -289,14 +289,14 @@ class RoleContextConfig:
     large: int = 8192
     report_large: int = 16384  # Use for report/synthesis steps to avoid context overflow
     analyze_large: int = 16384
-    lfm2_tool: int = 0
-    lfm2_rag: int = 0
-    lfm2_extract: int = 0
-    lfm2_extract_350m: int = 0
-    lfm2_math: int = 0
-    lfm2_transcript: int = 0
-    lfm2_vl: int = 0
-    lfm2_jp: int = 0
+    lfm2_tool: int = 8192
+    lfm2_rag: int = 8192
+    lfm2_extract: int = 8192
+    lfm2_extract_350m: int = 4096
+    lfm2_math: int = 4096
+    lfm2_transcript: int = 8192
+    lfm2_vl: int = 4096
+    lfm2_jp: int = 8192
 
     def get(self, role: str, default: int = 0) -> int:
         """Get n_ctx for a role, returning default if not set or 0."""
@@ -444,13 +444,31 @@ def load_config(path: Path | str | None = None) -> AppConfig:
 
 
 def resolve_role_path(config: AppConfig, role: str) -> str:
-    """Resolve the model path for a role (absolute role paths are kept; others join models.directory)."""
+    """Resolve the model path for a role (absolute role paths are kept; others join models.directory).
+
+    Relative role paths are looked up under ``models.directory``, then under sibling
+    ``LiquidAI/`` (HF/LM Studio vendor folder for Liquid Nanos), then under the
+    parent of ``models.directory``. The first existing file wins; if none exist,
+    the primary ``models.directory`` join is returned (so load errors stay clear).
+    """
     if role in ("general", "default"):
         return config.model.path
     role_path = getattr(config.roles, role, "") if role in RolesConfig.__dataclass_fields__ else ""
     if not role_path:
         return config.model.path
+    p = Path(role_path)
+    if p.is_absolute():
+        return str(p)
     models_dir = config.models.directory
-    if models_dir:
-        return str(Path(models_dir) / role_path)  # absolute role_path wins over models_dir
-    return str(role_path)
+    if not models_dir:
+        return str(role_path)
+    base = Path(models_dir)
+    candidates = (
+        base / role_path,
+        base.parent / "LiquidAI" / role_path,
+        base.parent / role_path,
+    )
+    for cand in candidates:
+        if cand.is_file():
+            return str(cand.resolve())
+    return str(candidates[0])

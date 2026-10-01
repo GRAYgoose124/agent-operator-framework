@@ -430,7 +430,9 @@ async def run_research_loop(
                 if backend != "deep" and backends is None:
                     step_roles = _get_pipeline_step_roles(pipeline_path)
                     roles = step_roles | {"general", "default"}
+                    logger.info("Warming backends for roles: %s", sorted(roles))
                     backends = await _make_multi_backends(config, roles)
+                    logger.debug("Backends ready: %s", sorted(backends))
 
                 # Process items (parallel if >1); pass peer item ids so workspace_context includes other runners
                 batch_ids = {i.id for i in items}
@@ -640,8 +642,10 @@ async def _make_multi_backends(config: AppConfig, roles: set[str], plan=None, la
     """
     from dataclasses import replace
 
+    logger.debug("Importing llama backend modules...")
     from aof.inference.llama_backend import LlamaBackend
     from aof.inference.vram import apply_plan, plan_vram
+    logger.debug("Llama backend modules imported")
 
     if plan is None and any(r in config.llama_server.roles for r in roles):
         plan = plan_vram(config)

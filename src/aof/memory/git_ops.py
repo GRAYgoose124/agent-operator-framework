@@ -86,6 +86,9 @@ class GitOps:
         proc = await asyncio.create_subprocess_exec(
             *args,
             cwd=str(self.repo_dir),
+            # Avoid inheriting the REPL stdin pipe — on Windows that deadlocks
+            # create_subprocess_exec while asyncio.to_thread(input) is waiting.
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

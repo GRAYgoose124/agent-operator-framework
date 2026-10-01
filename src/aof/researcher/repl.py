@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import shlex
+import sys
+import threading
 from typing import TYPE_CHECKING
 
 from aof.researcher.artifacts import log_activity
@@ -27,6 +29,43 @@ Commands:
   quit, exit   Graceful shutdown
 """
 
+# Sentinel: stdin closed (EOF)
+_EOF = object()
+
+
+def _start_stdin_reader(loop: asyncio.AbstractEventLoop, line_queue: asyncio.Queue) -> threading.Thread:
+    """Read stdin on a plain thread so Windows Proactor + model load do not deadlock.
+
+    ``asyncio.to_thread(input)`` / ``run_in_executor(..., input)`` shares the event
+    loop's I/O completion port; concurrent llama.cpp loads then stall until stdin
+    receives data. A dedicated thread + ``call_soon_threadsafe`` avoids that.
+    """
+
+    def _reader() -> None:
+        while True:
+            try:
+                line = sys.stdin.readline()
+            except (OSError, ValueError):
+                line = ""
+            if line == "":
+                loop.call_soon_threadsafe(line_queue.put_nowait, _EOF)
+                break
+            loop.call_soon_threadsafe(line_queue.put_nowait, line)
+
+    t = threading.Thread(target=_reader, name="aof-researcher-stdin", daemon=True)
+    t.start()
+    return t
+
+
+async def _readline(prompt: str, line_queue: asyncio.Queue) -> str:
+    """Print prompt and wait for the next stdin line (raises EOFError on EOF)."""
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+    item = await line_queue.get()
+    if item is _EOF:
+        raise EOFError
+    return item.rstrip("\r\n")
+
 
 async def run_repl(
     queue_path: str,
@@ -39,10 +78,13 @@ async def run_repl(
     from aof.research import ResearchQueue
 
     queue = ResearchQueue(queue_path)
+    loop = asyncio.get_running_loop()
+    line_queue: asyncio.Queue = asyncio.Queue()
+    _start_stdin_reader(loop, line_queue)
 
     while not control.get("quit", False):
         try:
-            line = await asyncio.to_thread(input, prompt)
+            line = await _readline(prompt, line_queue)
         except EOFError:
             control["quit"] = True
             break

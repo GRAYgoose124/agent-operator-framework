@@ -7,7 +7,9 @@ import asyncio
 import json
 import logging
 import os
+import queue
 import sys
+from logging.handlers import QueueHandler, QueueListener
 from pathlib import Path
 
 from aof import __version__
@@ -282,7 +284,9 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    # Setup logging: console (INFO+ by default) + file (DEBUG always)
+    # Setup logging: console (INFO+ by default) + file (DEBUG) via QueueHandler.
+    # Direct FileHandler on the root logger can interact badly with Windows asyncio;
+    # queue the file writes onto a listener thread instead.
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
 
@@ -294,15 +298,23 @@ def main() -> None:
     ))
     root_logger.addHandler(console_handler)
 
-    file_handler = logging.FileHandler("aof_debug.log", encoding="utf-8")
+    log_path = os.environ.get("AOF_LOG_FILE", "aof_debug.log").strip() or "aof_debug.log"
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(logging.Formatter(
         "%(asctime)s %(levelname)s %(name)s [%(filename)s:%(lineno)d]: %(message)s",
     ))
-    root_logger.addHandler(file_handler)
+    log_queue: queue.Queue = queue.Queue(-1)
+    root_logger.addHandler(QueueHandler(log_queue))
+    log_listener = QueueListener(log_queue, file_handler)
+    log_listener.start()
 
     config = load_config(args.config)
-    asyncio.run(_dispatch(args, config))
+    try:
+        asyncio.run(_dispatch(args, config))
+    finally:
+        log_listener.stop()
+        file_handler.close()
 
 
 async def _dispatch(args: argparse.Namespace, config: AppConfig) -> None:
@@ -970,10 +982,14 @@ async def _run_researcher(args: argparse.Namespace, config: AppConfig) -> None:
                             last_pos = f.tell()
                 # Read command
                 try:
-                    line = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: input("daemon> ") if sys.stdin.isatty() else sys.stdin.readline(),
-                    )
+                    # Use sys.stdin.readline in a worker thread rather than input(), which
+                    # can deadlock the Windows Proactor loop while other tasks load models.
+                    sys.stdout.write("daemon> ")
+                    sys.stdout.flush()
+                    line = await asyncio.to_thread(sys.stdin.readline)
                 except EOFError:
+                    break
+                if line == "":
                     break
                 line = line.strip()
                 if not line:
@@ -1100,6 +1116,15 @@ async def _run_researcher(args: argparse.Namespace, config: AppConfig) -> None:
         print(f"Lateral thinking: on (every {config.research.lateral_interval}s).")
     print("Type 'help' for commands. Research runs in background.")
     print()
+
+    # Import llama-cpp before the REPL claims stdin. On Windows, importing
+    # llama_cpp while another thread is blocked in stdin.readline() can stall
+    # until the next stdin line arrives (researcher appears frozen after start).
+    if args.backend == "legacy":
+        logger = logging.getLogger(__name__)
+        logger.info("Preloading llama-cpp (before REPL)...")
+        import aof.inference.llama_backend  # noqa: F401
+        logger.info("llama-cpp ready")
 
     async def research_task():
         try:

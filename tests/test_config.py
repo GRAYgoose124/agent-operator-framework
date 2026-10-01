@@ -57,3 +57,46 @@ def test_model_paths_expand_user(tmp_path):
     config = load_config(cfg_file)
     assert "~" not in config.model.path
     assert "~" not in config.models.directory
+
+
+def test_resolve_role_path_falls_back_to_liquidai_sibling(tmp_path):
+    """Liquid Nanos often live under models/LiquidAI while models.directory is lmstudio-community."""
+    from aof.config import resolve_role_path
+
+    community = tmp_path / "lmstudio-community"
+    community.mkdir()
+    liquid = tmp_path / "LiquidAI" / "LFM2-1.2B-Tool-GGUF"
+    liquid.mkdir(parents=True)
+    model = liquid / "LFM2-1.2B-Tool-Q4_K_M.gguf"
+    model.write_bytes(b"gguf")
+
+    cfg_file = tmp_path / "c.toml"
+    cfg_file.write_text(
+        f'[models]\ndirectory = "{community.as_posix()}"\n'
+        '[roles]\nlfm2_tool = "LFM2-1.2B-Tool-GGUF/LFM2-1.2B-Tool-Q4_K_M.gguf"\n'
+    )
+    config = load_config(cfg_file)
+    resolved = Path(resolve_role_path(config, "lfm2_tool"))
+    assert resolved.resolve() == model.resolve()
+
+
+def test_resolve_role_path_prefers_models_directory(tmp_path):
+    """When the file exists under models.directory, do not prefer LiquidAI."""
+    from aof.config import resolve_role_path
+
+    community = tmp_path / "lmstudio-community" / "LFM2-1.2B-Tool-GGUF"
+    community.mkdir(parents=True)
+    primary = community / "LFM2-1.2B-Tool-Q4_K_M.gguf"
+    primary.write_bytes(b"primary")
+    liquid = tmp_path / "LiquidAI" / "LFM2-1.2B-Tool-GGUF"
+    liquid.mkdir(parents=True)
+    (liquid / "LFM2-1.2B-Tool-Q4_K_M.gguf").write_bytes(b"liquid")
+
+    cfg_file = tmp_path / "c.toml"
+    cfg_file.write_text(
+        f'[models]\ndirectory = "{(tmp_path / "lmstudio-community").as_posix()}"\n'
+        '[roles]\nlfm2_tool = "LFM2-1.2B-Tool-GGUF/LFM2-1.2B-Tool-Q4_K_M.gguf"\n'
+    )
+    config = load_config(cfg_file)
+    resolved = Path(resolve_role_path(config, "lfm2_tool"))
+    assert resolved.resolve() == primary.resolve()

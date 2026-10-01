@@ -81,7 +81,9 @@ model = "qwen3-0.6b"
 directory = "~/.lmstudio/models/lmstudio-community"
 
 # Multi-model role assignments (role -> model path or server model name)
-# Agents are assigned roles; each role can use a different model/backend
+# Agents are assigned roles; each role can use a different model/backend.
+# Relative paths join [models].directory; if missing there, resolve_role_path also
+# checks sibling LiquidAI/ (where HF Liquid Nanos typically land in LM Studio).
 [roles]
 micro = "Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf"       # Simple search, basic tasks
 small = "Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"  # Code gen, moderate reasoning
@@ -103,6 +105,10 @@ reasoning = 8192
 fallback = 16384
 report_large = 16384
 analyze_large = 16384
+orchestrator = 8192
+lfm2_tool = 8192
+lfm2_rag = 8192
+lfm2_extract = 8192
 
 # SOTA 2.0 harness (`aof sota run|report|ask`). Roles name entries in [roles]; see docs/sota-harness.md.
 [sota]

@@ -45,12 +45,12 @@ class LlamaBackend:
             self._pool_size,
             self._model_config.path,
         )
-        futs = [
-            loop.run_in_executor(self._executor, self._load_model)
-            for _ in range(self._pool_size)
-        ]
-        models = await asyncio.gather(*futs)
-        self._models = list(models)
+        # Load sequentially: parallel Llama() init while another task blocks on
+        # stdin (researcher REPL) can deadlock the Windows ProactorEventLoop.
+        models: list[Llama] = []
+        for _ in range(self._pool_size):
+            models.append(await loop.run_in_executor(self._executor, self._load_model))
+        self._models = models
         for i in range(self._pool_size):
             self._slots.put_nowait(i)
         self._started = True
