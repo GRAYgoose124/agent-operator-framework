@@ -103,3 +103,22 @@ reasoning = 8192
 fallback = 16384
 report_large = 16384
 analyze_large = 16384
+
+# SOTA 2.0 harness (`aof sota run|report|ask`). Roles name entries in [roles]; see docs/sota-harness.md.
+[sota]
+writer = "large"          # writes outlines, report sections, synthesis and `ask` answers
+writer_ctx = 0            # 0 = [role_context] value; e.g. 8192 runs the large model lean, 32768 gives bigger evidence packs
+writer_parallel = 0       # llama-server slots for the writer (0 = [llama_server] setting); 2 lets `ask` run beside a report
+writer_thinking = false   # let a thinking model reason before writing (slower)
+judge = "small"           # cheap judge for the citation support check
+confirm = "large"         # confirms every negative verdict before a sentence is flagged
+check = "cheap"           # none | cheap | strict
+report_kind = "review"    # review | investigation
+report_sections = 7
+section_words = 650
+evidence_max = 45         # evidence items per section (also bounded by the writer's context)
+research_thin = true      # research sections with thin vault evidence before writing them
+sources = ["pubmed", "openalex", "wikipedia"]
+auto = false              # autopilot: keep researching / structuring / reporting when idle
+auto_structure_every = 4
+auto_report_every = 0

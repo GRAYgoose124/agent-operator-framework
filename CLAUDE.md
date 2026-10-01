@@ -24,6 +24,10 @@ uv run aof researcher run --parallel 3           # Process 3 items concurrently
 uv run aof researcher clone --from proj1 --to proj2  # Clone workspace
 uv run aof researcher start --workspace myproject # Headless daemon mode
 uv run aof researcher attach                      # Attach to running daemon
+uv run aof sota run -w neuro                      # SOTA 2.0 harness: live console (ask/steer/report/research/now/set)
+uv run aof sota report -w neuro "topic" --kind investigation --writer-ctx 8192   # one long-form report, then exit
+uv run aof sota send -w neuro "report thalamic gating -i"   # message a running (e.g. --headless) harness
+uv run aof refine structure --workspace neuro     # rebuild vault graph: hubs, concepts, sources, sparse claim links
 
 # Tests (if `uv run pytest` fails with "Failed to canonicalize script path" on Windows, use `uv run --extra dev python -m pytest`)
 uv run pytest tests/                        # all tests
@@ -117,6 +121,9 @@ SQLite FTS5 + markdown files in `data/memory/` (git-versioned). Strategies: sear
 | `refine/sources.py` | Evidence sources: PubMed, OpenAlex, Wikipedia, web; `doc_key` merges copies of one work |
 | `refine/{gaps,standalone,repair,vectors}.py` | Gap-driven research, standalone-ness check, repairs for older vaults, NumPy similarity maths |
 | `refine/{link,hubs,structure,metrics,export,assess}.py` | Links, hub notes, vault metrics, Obsidian export, rubric assessment |
+| `refine/{graph,concepts}.py` | Layered vault graph (topic hubs, concept notes, source notes, mutual-kNN claim links); deterministic concept extraction |
+| `refine/{retrieve,report,embcache}.py` | Graph-aware retrieval (`VaultGraph`), long-form report writer (outline, evidence packs, cited sections, support check, synthesis), embedding cache |
+| `sota/{harness,jobs,commands,console,cli}.py` | `aof sota`: job queue with preemption, live console + inbox, runtime model/context settings, autopilot; see `docs/sota-harness.md` |
 | `specialists/registry.py` | Capability -> provider-chain cascade (Needle 3/2, role models, embeddings) |
 | `inference/llama_server.py` | Managed llama.cpp `llama-server` backend (roles in `[llama_server] roles`); see `docs/llama-cpp.md` |
 | `agent/lifecycle.py` | Single agent state machine |
@@ -145,6 +152,7 @@ Key new config fields:
 - `[role_context]`: Per-role `n_ctx` overrides (e.g. `micro = 4096`, `medium = 16384`). 0 = use global default.
 - `[research]`: `parallel_items`, `refinement_pipeline` + `refinement_passes`; `seed_expansion_role` (medium|fallback), `seed_expansion_count` (for --seed-question); `branch_connector_enabled` + `branch_connector_interval`; `lateral_thinking_enabled`, `lateral_interval`, `lateral_min_backlog`.
 - `[memory]`: `consolidation_enabled`, `consolidation_interval`, `consolidation_min_notes` (background memory clustering).
+- `[sota]`: harness models (`writer`, `writer_ctx`, `writer_parallel`, `writer_thinking`, `judge`, `judge_ctx`, `judge_parallel`, `confirm`), report settings (`check`, `report_kind`, `report_sections`, `section_words`, `evidence_max`, `research_thin`), research settings, autopilot. All changeable live with `set key=value`.
 
 ## Testing Conventions
 

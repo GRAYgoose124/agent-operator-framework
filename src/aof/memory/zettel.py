@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-NOTE_KINDS = ("note", "claim", "hub", "report")
+NOTE_KINDS = ("note", "claim", "hub", "concept", "source", "report")
 NOTE_STATUSES = ("raw", "refined", "canonical", "archived")
 
 

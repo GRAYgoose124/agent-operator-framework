@@ -97,6 +97,43 @@ class ResearchConfig:
 
 
 @dataclass(frozen=True)
+class SotaConfig:
+    """`aof sota`: the research harness (evidence gathering, vault graph, long-form reports, live console).
+
+    Model settings name roles from [roles]; `writer_ctx` runs the writer with its own context size (e.g. the large
+    model at 8192 to leave VRAM for other roles, or at 32768 for bigger evidence packs). 0 = [role_context] value.
+    """
+    writer: str = "large"  # writes outlines, report sections, synthesis and `ask` answers
+    writer_ctx: int = 0
+    writer_parallel: int = 0  # llama-server slots for the writer (0 = [llama_server] setting); 2 lets `ask` run beside a report
+    writer_thinking: bool = False  # let a thinking model reason before writing (slower, more tokens)
+    judge: str = "small"  # cheap support judge for cited sentences
+    judge_ctx: int = 4096  # judge prompts are short: a small context keeps its KV cache (VRAM) small
+    judge_parallel: int = 2  # llama-server slots for the judge (each slot holds judge_ctx of KV cache)
+    confirm: str = "large"  # confirms every negative verdict before a sentence is flagged
+    check: str = "cheap"  # none | cheap | strict
+    report_kind: str = "review"  # review | investigation
+    report_sections: int = 7
+    section_words: int = 650
+    section_out_tokens: int = 1800
+    evidence_max: int = 45  # evidence items per section (also bounded by writer_ctx)
+    per_work: int = 3  # evidence items per source work per section
+    research_thin: bool = True  # research sections whose evidence is thin before writing them
+    ask_evidence: int = 24
+    sources: tuple[str, ...] = ("pubmed", "openalex", "wikipedia")
+    per_source: int = 5
+    claims_per_doc: int = 6
+    curate: bool = True
+    verify_top: int = 2
+    concurrency: int = 4  # concurrent small-model calls (match the judge role's n_parallel)
+    auto: bool = False  # when idle, keep working: queue-file questions, then gap research, then reports
+    auto_structure_every: int = 4  # rebuild the vault graph after this many research jobs
+    auto_report_every: int = 0  # write a report on the least-covered area after N research jobs (0 = never)
+    graph_max_hub_size: int = 40
+    graph_link_k: int = 2
+
+
+@dataclass(frozen=True)
 class DiscoveryConfig:
     """Discovery queue (breadth-first web navigation) settings."""
     queue_path: str = "data/discovery_queue.json"
@@ -284,6 +321,7 @@ class AppConfig:
     research: ResearchConfig = field(default_factory=ResearchConfig)
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     role_context: RoleContextConfig = field(default_factory=RoleContextConfig)
+    sota: SotaConfig = field(default_factory=SotaConfig)
 
 
 def _merge(defaults: dict, overrides: dict) -> dict:
@@ -401,6 +439,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         research=_make_config(ResearchConfig, raw.get("research", {})),
         discovery=_make_config(DiscoveryConfig, raw.get("discovery", {})),
         role_context=_make_config(RoleContextConfig, raw.get("role_context", {})),
+        sota=_make_config(SotaConfig, raw.get("sota", {})),
     )
 
 

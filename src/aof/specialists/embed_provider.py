@@ -20,6 +20,10 @@ class SentenceTransformerProvider:
         self._model = None
         self._lock = asyncio.Lock()
 
+    @property
+    def model_id(self) -> str:
+        return self._model_name
+
     def available(self) -> bool:
         try:
             import sentence_transformers  # noqa: F401
@@ -31,6 +35,14 @@ class SentenceTransformerProvider:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
+            try:  # the load report and warnings would interleave with interactive consoles
+                from transformers.utils import logging as hf_logging
+
+                hf_logging.set_verbosity_error()
+                hf_logging.disable_progress_bar()
+            except ImportError:
+                pass
+
             try:  # cached weights load instantly and never touch the network
                 self._model = SentenceTransformer(self._model_name, device=self._device, local_files_only=True)
             except Exception:
@@ -41,7 +53,7 @@ class SentenceTransformerProvider:
         async with self._lock:
             try:
                 vectors = await asyncio.to_thread(
-                    lambda: self._load().encode(texts, normalize_embeddings=True).tolist()
+                    lambda: self._load().encode(texts, normalize_embeddings=True, show_progress_bar=False).tolist()
                 )
             except Exception as e:  # e.g. model download failed while offline
                 logger.warning("sentence-transformers embed failed: %s", e)

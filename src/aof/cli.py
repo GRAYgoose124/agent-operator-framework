@@ -165,6 +165,10 @@ def main() -> None:
 
     add_refine_parser(subparsers, common)
 
+    from aof.sota.cli import add_sota_parser
+
+    add_sota_parser(subparsers, common)
+
     # aof researcher run [--workspace NAME] [--pipeline PATH] ...
     researcher_p = subparsers.add_parser(
         "researcher",
@@ -329,6 +333,10 @@ async def _dispatch(args: argparse.Namespace, config: AppConfig) -> None:
         from aof.refine.cli import run_refine_command
 
         await run_refine_command(args, config)
+    elif args.command == "sota":
+        from aof.sota.cli import run_sota_command
+
+        await run_sota_command(args, config)
 
 
 async def _make_backend(args: argparse.Namespace, config: AppConfig, model_path_override: str | None = None):

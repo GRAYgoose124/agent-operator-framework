@@ -45,11 +45,17 @@ def add_refine_parser(subparsers, common: argparse.ArgumentParser) -> None:
     def workspace_only(p: argparse.ArgumentParser) -> None:
         p.add_argument("--workspace", required=True, help="Workspace name (data/workspaces/<name>)")
 
-    structure_p = sub.add_parser("structure", help="Link related claims and build hub notes")
+    structure_p = sub.add_parser(
+        "structure", help="Build the vault graph: topic hubs, concept notes, source notes, sparse claim links",
+    )
     workspace_only(structure_p)
-    structure_p.add_argument("--link-min-sim", type=float, default=0.55)
+    structure_p.add_argument("--link-k", type=int, default=2, help="Mutual nearest-neighbour claim links per claim")
+    structure_p.add_argument("--link-min-sim", type=float, default=0.62)
     structure_p.add_argument("--hub-threshold", type=float, default=0.5)
-    structure_p.add_argument("--max-hub-size", type=int, default=60, help="Split hubs larger than this into subtopics")
+    structure_p.add_argument("--max-hub-size", type=int, default=40, help="Split hubs larger than this into subtopics")
+    structure_p.add_argument("--max-concepts", type=int, default=0, help="Concept notes to keep (0 = scale with vault)")
+    structure_p.add_argument("--concept-max-share", type=float, default=0.06,
+                             help="Drop terms mentioned by more than this share of claims (too general to navigate)")
 
     gaps_p = sub.add_parser("gaps", help="Find what the vault does not yet answer for each question and research it")
     shared(gaps_p)
@@ -88,6 +94,8 @@ def add_refine_parser(subparsers, common: argparse.ArgumentParser) -> None:
     workspace_only(export_p)
     export_p.add_argument("--out", default="", help="Output folder (default: <workspace>/export)")
     export_p.add_argument("--no-archive", action="store_true", help="Omit archived (merged / curated-out) claims")
+    export_p.add_argument("--no-obsidian-config", action="store_true",
+                          help="Do not write a default .obsidian/graph.json (never overwrites an existing one)")
 
     assess_p = sub.add_parser("assess", help="Score the vault against the question set's rubric")
     shared(assess_p)
@@ -161,11 +169,16 @@ async def run_refine_command(args: argparse.Namespace, config: AppConfig) -> Non
                 print(f"[{i}/{len(specs)}] {spec.id}: {report.summary()}", flush=True)
             print("Specialist usage:", registry.summary())
         elif args.refine_command == "structure":
+            from aof.refine.graph import GraphOptions
             from aof.refine.structure import structure_vault
 
+            options = GraphOptions(
+                link_k=args.link_k, link_min_sim=args.link_min_sim, hub_threshold=args.hub_threshold,
+                max_hub_size=args.max_hub_size, max_concepts=args.max_concepts,
+                concept_max_share=args.concept_max_share,
+            )
             print("Structured:", await structure_vault(
-                store, registry, link_min_sim=args.link_min_sim, hub_threshold=args.hub_threshold,
-                max_hub_size=args.max_hub_size,
+                store, registry, options=options, workspace_root=workspace.root, progress=lambda m: print(" ", m, flush=True),
             ))
         elif args.refine_command == "gaps":
             from aof.refine import gaps as gap_research
@@ -286,7 +299,10 @@ async def run_refine_command(args: argparse.Namespace, config: AppConfig) -> Non
             from aof.refine.export import export_vault
 
             out = Path(args.out) if args.out else workspace.root / "export"
-            counts = await export_vault(store, out, title=f"{args.workspace} vault", include_archive=not args.no_archive)
+            counts = await export_vault(
+                store, out, title=f"{args.workspace} vault", include_archive=not args.no_archive,
+                obsidian_config=not args.no_obsidian_config,
+            )
             print(f"Exported to {out}: {counts}")
         else:
             assessments = await assess_vault(specs, store, registry, judge_only=args.judge_with or None)

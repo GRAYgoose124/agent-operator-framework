@@ -170,16 +170,24 @@ async def test_export_is_lossless_and_wikilinked(vault, tmp_path):
     out = tmp_path / "export"
     counts = await export_vault(store, out, title="Test vault")
     assert counts["claims"] == 15 and counts["archive"] == 1 and counts["hubs"] >= 2
-    assert (out / "archive" / "c-old.md").exists()  # nothing dropped from the export
+    by_id = {}
+    for f in out.rglob("*.md"):
+        head = f.read_text(encoding="utf-8").split("\n", 2)
+        if len(head) > 1 and head[1].startswith("id: "):
+            by_id[head[1][4:]] = f
+    assert by_id["c-old"].parent.name == "archive"  # nothing dropped from the export
+    assert "**Merged into:**" in by_id["c-old"].read_text(encoding="utf-8")  # the archive is not a cloud of orphans
 
     index = (out / "Index.md").read_text(encoding="utf-8")
-    assert "# Test vault" in index and index.count("[[hub-") == counts["hubs"]
-    text = (out / "claims" / "c-trn-0.md").read_text(encoding="utf-8")
-    assert text.startswith("---\nid: c-trn-0\n") and 'status: refined' in text
+    assert "# Test vault" in index and index.count("[[") >= counts["hubs"]
+    claim = by_id["c-trn-0"]
+    assert claim.parent.name == "claims" and not claim.stem.startswith("c-trn")  # readable file name, not the id
+    text = claim.read_text(encoding="utf-8")
+    assert text.startswith("---\nid: c-trn-0\n") and 'status: refined' in text and 'aliases: ["c-trn-0"]' in text
     assert "sources:" in text and "https://pubmed.example/trn/0" in text
     hub_text = next((out / "hubs").iterdir()).read_text(encoding="utf-8")
-    assert "[[c-" in hub_text and "|" in hub_text  # aliased wikilinks like [[id|readable title]]
-    assert "Sources.md" and (out / "Sources.md").read_text(encoding="utf-8").count("https://") >= 15
+    assert "[[" in hub_text and "|" in hub_text  # aliased wikilinks like [[file name|readable title]]
+    assert (out / "Sources.md").exists() and (out / ".obsidian" / "graph.json").exists()
 
 
 # -- nested hubs and stale-hub retirement (crafted vectors: no model needed) ---------------------------------
@@ -270,8 +278,9 @@ async def test_export_index_shows_every_hub_level(tmp_path):
         await export_vault(store, tmp_path / "out", title="Tree")
         index = (tmp_path / "out" / "Index.md").read_text(encoding="utf-8")
         parent = next(h for h in hubs if "hub-level:0" in h.tags and any(i.startswith("hub-1-") for i in h.links))
-        child_lines = [ln for ln in index.splitlines() if "[[hub-1-" in ln]
-        assert child_lines and all(ln.startswith("    - ") for ln in child_lines)  # nested one level under a parent
-        assert f"[[{parent.id}|" in index and "80 claims" in index
+        children = [h for h in hubs if "hub-level:1" in h.tags]
+        child_lines = [ln for ln in index.splitlines() if any(f"[[{c.title}]]" in ln for c in children)]
+        assert len(child_lines) == 2 and all(ln.startswith("    - ") for ln in child_lines)  # nested under the parent
+        assert f"- [[{parent.title}]] (80 claims)" in index
     finally:
         await store.close()

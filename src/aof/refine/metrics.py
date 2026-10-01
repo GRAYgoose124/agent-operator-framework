@@ -31,6 +31,7 @@ class VaultMetrics:
     verified_rate: float = 0.0  # live claims with a recorded corroboration lookup
     conflicts: int = 0
     source_mix: dict[str, int] = field(default_factory=dict)  # source host -> claim count
+    graph: dict[str, float] = field(default_factory=dict)  # see graph_shape()
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -43,6 +44,7 @@ class VaultMetrics:
             ("sourced", f"{self.sourced_rate:.0%}"), ("corroborated (>=2 sources)", f"{self.corroborated_rate:.0%}"),
             ("verified by lookup", f"{self.verified_rate:.0%}"), ("open conflicts", self.conflicts),
         ]
+        rows += [(f"graph: {k.replace('_', ' ')}", f"{v:.2f}" if isinstance(v, float) else v) for k, v in self.graph.items()]
         out = ["| metric | value |", "|---|---|", *[f"| {k} | {v} |" for k, v in rows]]
         if self.source_mix:
             out += ["", "Sources: " + ", ".join(f"{h} ({c})" for h, c in sorted(self.source_mix.items(), key=lambda kv: -kv[1]))]
@@ -83,6 +85,56 @@ def measure(
     return m
 
 
+def graph_shape(notes: Sequence[ZettelNote]) -> dict[str, float]:
+    """Shape of the link graph over the given notes (links to notes outside the set are ignored).
+
+    What a reader feels when traversing: isolated notes (orphans), whether everything collapses into one blob
+    (largest component share, claim-claim degree), and whether hubs are walls of claims (max direct members) or
+    share titles (duplicate titles make the map ambiguous).
+    """
+    ids = {n.id for n in notes}
+    adj: dict[str, set[str]] = {n.id: set() for n in notes}
+    for n in notes:
+        for t in n.links:
+            if t in ids and t != n.id:
+                adj[n.id].add(t)
+                adj[t].add(n.id)
+    seen: set[str] = set()
+    sizes = []
+    for start in adj:
+        if start in seen:
+            continue
+        stack, size = [start], 0
+        seen.add(start)
+        while stack:
+            x = stack.pop()
+            size += 1
+            for y in adj[x] - seen:
+                seen.add(y)
+                stack.append(y)
+        sizes.append(size)
+    kind = {n.id: n.kind for n in notes}
+    claims = [n for n in notes if n.kind == "claim"]
+    hubs = [n for n in notes if n.kind == "hub"]
+    titles = [h.title.lower() for h in hubs]
+    out: dict[str, float] = {
+        "nodes": len(notes),
+        "isolated_nodes": sum(1 for v in adj.values() if not v),
+        "components": len(sizes),
+        "largest_component_share": max(sizes) / len(notes) if notes else 0.0,
+        "claim_claim_degree": (
+            sum(sum(1 for t in adj[c.id] if kind.get(t) == "claim") for c in claims) / len(claims) if claims else 0.0
+        ),
+        "max_hub_direct_claims": max((sum(1 for t in h.links if kind.get(t) == "claim") for h in hubs), default=0),
+        "duplicate_hub_titles": len(titles) - len(set(titles)),
+    }
+    for k in ("concept", "source", "report"):
+        out[f"{k}_notes"] = sum(1 for n in notes if n.kind == k)
+    if claims:
+        out["claims_with_concept"] = sum(1 for c in claims if any(kind.get(t) == "concept" for t in c.links)) / len(claims)
+    return out
+
+
 async def compute_metrics(store: MemoryStore, registry: SpecialistRegistry | None = None) -> VaultMetrics:
     live = [n for n in await live_claims(store) if n.kind == "claim"]
     everything = await store.get_notes_by_tags(["claim"], limit=100000)
@@ -91,4 +143,7 @@ async def compute_metrics(store: MemoryStore, registry: SpecialistRegistry | Non
     embed = registry_embedder(registry) if registry is not None else None
     if embed and live:
         vectors = dict(zip((n.id for n in live), await embed([claim_text(n) for n in live])))
-    return measure(live, len(everything) - len(live), hubs, vectors)
+    m = measure(live, len(everything) - len(live), hubs, vectors)
+    derived = await store.get_notes_by_tags(["hub", "concept", "source", "report"], limit=100000, exclude_tags=["archived"])
+    m.graph = graph_shape([*live, *(n for n in derived if n.status != "archived")])
+    return m

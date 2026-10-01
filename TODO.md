@@ -18,6 +18,12 @@
 
 ## In Progress
 
+- [ ] SOTA 2.0 harness (`aof sota`, docs/sota-harness.md). Done: layered vault graph (hubs capped + unique titles,
+  concept notes, source notes, sparse claim links, clean export), graph-aware retrieval, report writer (reviews and
+  insight investigations with cited, support-checked sections), harness with job queue, preemption, live steering,
+  side-running `ask`, runtime model/context settings, inbox, autopilot. Next: faster writer throughput (see
+  llama-server benchmark), reader-graded report quality on the neuro vault, per-section figures/tables.
+
 - [ ] Knowledge-vault overhaul. Done: llama-server backend, specialist registry (Needle 3/2, role models),
   atomic notes with provenance, `aof refine` (gather, extract, merge, curate, verify, link, hubs, metrics, export, assess),
   standalone-ness check, gap-driven research. Next: raise rubric coverage further (recall of landmark papers, full-text
